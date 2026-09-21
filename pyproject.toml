@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "library-management-system"
+version = "2.1.0"
+description = "Library Management System (TQM Edition — BBAT104)"
+requires-python = ">=3.9"
+
+[tool.setuptools.packages.find]
+include = ["config*", "database*", "services*", "gui*", "web*"]
