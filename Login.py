@@ -135,4 +135,4 @@ def show_login_screen(app):
     app.pass_entry.bind("<Return>", lambda e: perform_login())
     app.user_entry.bind("<Return>", lambda e: app.pass_entry.focus_set())
     app.user_entry.focus_set()
-    print("hello")
+    
