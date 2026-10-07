@@ -1,1 +1,1 @@
-# Borrow and Return Package
+# Member Management Package
