@@ -1,1 +1,1 @@
-# Dashboard Package
+# Fast Search Package
