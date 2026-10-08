@@ -1,1 +1,1 @@
-# Authentication Package
+# Dashboard Package
