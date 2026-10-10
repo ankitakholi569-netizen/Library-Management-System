@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+data/
+logs/
+reports/
+.env
+daily_commit.py
+.commit_progress

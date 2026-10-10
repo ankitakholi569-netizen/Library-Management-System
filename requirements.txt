@@ -1,0 +1,23 @@
+# ==============================================================================
+# Library Management System (TQM Edition) - Dependencies
+# ==============================================================================
+
+# Core GUI & UI Framework
+PySide6>=6.6.0
+
+# Database & ORM
+SQLAlchemy>=2.0.0
+
+# Security & Password Hashing
+bcrypt>=4.0.0
+
+# Data Analytics & Processing (TQM Metrics)
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Quality Charts & Visualizations
+matplotlib>=3.7.0
+
+# Professional Reports Export
+reportlab>=4.0.0
+openpyxl>=3.1.0
