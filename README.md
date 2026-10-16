@@ -32,16 +32,16 @@ Library Management System/
 │   ├── 📂 services/                     # Business Logic & Automation Engines
 │   │   ├── __init__.py
 │   │   ├── db_service.py                # Schema initialization & sample data seeder
-│   │   ├── circulation_service.py       # (Part 3) Book issue, return & fine settlement logic
-│   │   ├── payroll_service.py           # (Part 3) Shift aggregation & salary calculation
-│   │   ├── analytics_service.py         # (Part 3) Pandas TQM statistical metrics & KPI aggregations
-│   │   └── report_service.py            # (Part 4) ReportLab PDF slips & OpenPyXL Excel export
+│   │   ├── circulation_service.py       # Book issue, return & fine settlement logic
+│   │   ├── payroll_service.py           # Shift aggregation & salary calculation
+│   │   ├── analytics_service.py         # Pandas TQM statistical metrics & KPI aggregations
+│   │   └── report_service.py            # ReportLab PDF slips & OpenPyXL Excel export
 │   │
 │   └── 📂 ui/                           # PySide6 Modern Desktop GUI Layer
 │       ├── __init__.py
-│       ├── styles.py                    # (Part 5) Executive Slate QSS design stylesheet
-│       ├── 📂 components/               # (Part 5) Custom StatCards, SearchInputs, KPI Badges
-│       └── 📂 views/                    # (Part 6) Distinct functional views
+│       ├── styles.py                    # Executive Slate QSS design stylesheet
+│       ├── 📂 components/               # Custom StatCards, SearchInputs, KPI Badges
+│       └── 📂 views/                    # Distinct functional views
 │           ├── login_view.py            # Authentication with bcrypt verification
 │           ├── dashboard_view.py        # Real-time metrics & embedded Matplotlib charts
 │           ├── books_view.py            # Catalog view with multi-criteria fast search & filter
@@ -61,7 +61,7 @@ Library Management System/
 │
 ├── 📄 test_part1.py                     # Single-command verification script for Core & Security
 ├── 📄 test_part2.py                     # Single-command verification script for Database & Models
-├── 📄 run.py                            # (Part 7) Main application launcher
+├── 📄 run.py                            # Main application launcher
 └── 📄 requirements.txt                  # Production dependencies
 ```
 
@@ -85,10 +85,23 @@ Library Management System/
 
 Run these commands in PowerShell or Command Prompt:
 
-```powershell
 # Verify Part 1 (Config, Logger & Bcrypt)
 .\.venv\Scripts\python.exe test_part1.py
 
 # Verify Part 2 (Database ORM & Sample Data)
 .\.venv\Scripts\python.exe test_part2.py
+
+# Verify Part 3 (Services & Business Logic)
+.\.venv\Scripts\python.exe test_part3.py
+
+# Verify Part 4 (Reports & Document Export)
+.\.venv\Scripts\python.exe test_part4.py
+
+# Launch Full Desktop GUI Application
+.\.venv\Scripts\python.exe run.py
 ```
+
+### 🔑 Default Staff Credentials for Viva / Demo:
+- **Chief Librarian (Admin):** `admin` / `admin123`
+- **Circulation Officer:** `priya_desk` / `priya123`
+- **Catalog Specialist:** `rahul_catalog` / `rahul123`
