@@ -6,6 +6,10 @@ __pycache__/
 data/
 logs/
 reports/
+exports/*
+!exports/.gitkeep
+.pytest_cache/
 .env
 daily_commit.py
 .commit_progress
+

@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "library-management-system"
-version = "0.1.0"
-description = "Library Management System"
-requires-python = ">=3.8"
+version = "2.1.0"
+description = "Library Management System (TQM Edition — BBAT104)"
+requires-python = ">=3.9"
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["config*", "database*", "services*", "gui*", "web*"]
