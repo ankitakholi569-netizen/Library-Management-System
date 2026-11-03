@@ -22,6 +22,12 @@ from database.models import Book, Member, Loan, StaffShift, StaffPayroll, Qualit
 from database.seed import seed_database
 from services.auth_service import get_all_users, get_staff_users, authenticate_user
 from services.library_service import (
+    fast_pos_issue,
+    inward_grn_entry,
+    get_fefo_stock_ledger,
+    verify_stock_balance,
+    generate_daily_z_report,
+    get_21cfr_audit_trail,
     get_all_books,
     get_book_by_id,
     get_book_categories,
@@ -43,6 +49,8 @@ from services.library_service import (
     get_dashboard_kpis,
 )
 from services.search_service import (
+    student_kiosk_search,
+    faculty_research_search,
     quick_search,
     search_books,
     search_members,
@@ -658,6 +666,100 @@ def create_app() -> Flask:
     def export_quality_audit():
         excel_path = generate_quality_audit_excel()
         return send_file(excel_path, as_attachment=True)
+
+
+    # =========================================================================
+    # 11. SRS STAKEHOLDER SPECIFIC REST APIS (FR-01 to FR-05)
+    # =========================================================================
+
+    # FR-01: Student Kiosk Search (30 req/min rate limit, sub-85ms search)
+    @app.route("/api/kiosk/search", methods=["GET"])
+    def api_kiosk_search():
+        q = request.args.get("q", "")
+        client_ip = request.remote_addr or "kiosk_client"
+        res = student_kiosk_search(query=q, client_id=client_ip)
+        status_code = 429 if not res.get("success") and res.get("rate_limit_breach") else 200
+        return jsonify(res), status_code
+
+    # FR-02: Faculty Research Search (120 req/min, citation sort, multi-filter)
+    @app.route("/api/faculty/search", methods=["GET"])
+    def api_faculty_search():
+        q = request.args.get("q", "")
+        cat = request.args.get("category")
+        min_year = request.args.get("min_year", type=int)
+        max_year = request.args.get("max_year", type=int)
+        peer_reviewed = request.args.get("peer_reviewed", "").lower() in ("true", "1", "yes")
+        sort_by = request.args.get("sort_by", "citations")
+        client_ip = request.remote_addr or "faculty_client"
+
+        res = faculty_research_search(
+            query=q,
+            category=cat,
+            min_year=min_year,
+            max_year=max_year,
+            peer_reviewed_only=peer_reviewed,
+            sort_by=sort_by,
+            client_id=client_ip
+        )
+        status_code = 429 if not res.get("success") and res.get("rate_limit_breach") else 200
+        return jsonify(res), status_code
+
+    # FR-03: POS Circulation Bay 1-Click Issue (Sub-1s loan completion)
+    @app.route("/api/pos/issue", methods=["POST"])
+    def api_pos_issue():
+        data = request.get_json() or {}
+        isbn = data.get("isbn") or data.get("barcode")
+        usn = data.get("usn")
+        operator = data.get("processed_by", "Circulation Staff")
+        res = fast_pos_issue(isbn_or_barcode=isbn, usn=usn, processed_by=operator)
+        status_code = 200 if res.get("success") else 400
+        return jsonify(res), status_code
+
+    # FR-04: FEFO Stock Ledger & Inward GRN Entry (100% Stock Balance)
+    @app.route("/api/grn/inward", methods=["POST"])
+    def api_grn_inward():
+        data = request.get_json() or {}
+        supplier = data.get("supplier_name")
+        grn_no = data.get("grn_number")
+        inv_no = data.get("invoice_no", "")
+        book_id = data.get("book_id")
+        qty = int(data.get("quantity", 1))
+        unit_cost = float(data.get("unit_cost", 0.0))
+        created_by = data.get("created_by", "Catalog Manager")
+
+        res = inward_grn_entry(
+            supplier_name=supplier,
+            grn_number=grn_no,
+            invoice_no=inv_no,
+            book_id=book_id,
+            quantity=qty,
+            unit_cost=unit_cost,
+            created_by=created_by,
+        )
+        status_code = 200 if res.get("success") else 400
+        return jsonify(res), status_code
+
+    @app.route("/api/grn/ledger", methods=["GET"])
+    def api_grn_ledger():
+        entries = get_fefo_stock_ledger()
+        return jsonify({"success": True, "count": len(entries), "ledger": entries})
+
+    @app.route("/api/grn/verify-balance", methods=["GET"])
+    def api_grn_verify_balance():
+        bal = verify_stock_balance()
+        return jsonify({"success": True, **bal})
+
+    # FR-05: Daily Z-Report Till Close (Zero Audit Variance)
+    @app.route("/api/admin/z-report", methods=["GET", "POST"])
+    def api_admin_z_report():
+        operator = request.args.get("operator", "Library Admin")
+        res = generate_daily_z_report(report_date=date.today(), generated_by=operator)
+        return jsonify(res)
+
+    @app.route("/api/admin/audit-21cfr", methods=["GET"])
+    def api_admin_audit_21cfr():
+        logs = get_21cfr_audit_trail(limit=100)
+        return jsonify({"success": True, "count": len(logs), "audit_logs": logs})
 
     return app
 

@@ -1,0 +1,1 @@
+from gui.kiosk_widget import StudentKioskWidget as StudentPortalView

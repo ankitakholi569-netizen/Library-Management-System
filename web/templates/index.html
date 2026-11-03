@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ app_name }} • Total Quality Management Portal (BBAT104)</title>
+    <title>{{ app_name }} — Library Management System • Total Quality Management Portal (BBAT104)</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,7 +50,7 @@
                 </div>
                 <div>
                     <div class="flex items-center space-x-2">
-                        <h1 class="font-extrabold text-lg tracking-tight leading-tight text-white">{{ app_name }}</h1>
+                        <h1 class="font-extrabold text-lg tracking-tight leading-tight text-white">{{ app_name }} — Library Management System</h1>
                         <span class="text-blue-400 font-semibold text-sm hidden sm:inline">CampusLib Pro</span>
                         <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">TQM SLA</span>
                     </div>
@@ -145,14 +145,32 @@
                 <button onclick="switchTab('payroll')" id="tab-payroll" class="tab-btn admin-only-tab px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5 bg-blue-50/70 border border-blue-200/60">
                     <span>💰</span> <span>Automated Payroll</span> <span class="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-bold uppercase">Admin</span>
                 </button>
+                <button onclick="switchTab('kiosk')" id="tab-kiosk" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5 bg-emerald-50/70 border border-emerald-200/60">
+                    <span>🎓</span> <span>Student Kiosk (FR-01)</span>
+                </button>
+                <button onclick="switchTab('faculty')" id="tab-faculty" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5 bg-purple-50/70 border border-purple-200/60">
+                    <span>🔬</span> <span>Faculty Research (FR-02)</span>
+                </button>
+                <button onclick="switchTab('pos')" id="tab-pos" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5 bg-indigo-50/70 border border-indigo-200/60">
+                    <span>⚡</span> <span>POS Bay (FR-03)</span>
+                </button>
+                <button onclick="switchTab('grn')" id="tab-grn" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5 bg-amber-50/70 border border-amber-200/60">
+                    <span>📦</span> <span>Stock Ledger (FR-04)</span>
+                </button>
+                <button onclick="switchTab('zreport')" id="tab-zreport" class="tab-btn admin-only-tab px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5 bg-rose-50/70 border border-rose-200/60">
+                    <span>🧾</span> <span>Daily Z-Report (FR-05)</span>
+                </button>
             </div>
 
             <!-- Role Access Switcher -->
             <div class="flex items-center gap-2 bg-white px-3.5 py-2 rounded-xl border border-slate-200 text-xs shadow-sm">
                 <span class="font-bold text-slate-500">View Mode:</span>
                 <select id="user-role-select" onchange="toggleUserRole(this.value)" class="font-bold bg-transparent border-none focus:outline-none text-slate-800 cursor-pointer">
-                    <option value="admin" selected>🛡 Chief Librarian (Admin Panel)</option>
-                    <option value="staff">👤 Staff User (Features Removed)</option>
+                    <option value="admin" selected>👑 Library Admin (FR-05 Z-Report & Audit)</option>
+                    <option value="circulation">🔄 Circulation Staff (FR-03 POS Bay)</option>
+                    <option value="catalog">📦 Catalog Manager (FR-04 FEFO Ledger)</option>
+                    <option value="student">🎓 Student (Kiosk) (FR-01 Fast Search)</option>
+                    <option value="faculty">🔬 Faculty Member (FR-02 Research Portal)</option>
                 </select>
             </div>
         </div>

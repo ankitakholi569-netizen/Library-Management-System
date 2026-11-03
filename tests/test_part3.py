@@ -48,11 +48,43 @@ def test_services():
 
     # 1. Test Circulation Logic (TQM Process Automation & Error Prevention)
     print("\n[Step 1/3] Testing Circulation Service (Issue, Return & Quota Safety)...")
+    from database.models import Loan
+    from sqlalchemy import select, and_
     with get_db() as db:
-        book = db.query(Book).filter(Book.available_copies > 0).first()
+        # Find a book with available copies that the first member doesn't already have on loan
+        all_books = db.query(Book).filter(Book.available_copies > 0).all()
         member = db.query(Member).first()
-        assert book is not None, "No books available to test issue"
         assert member is not None, "No members found to test issue"
+        book = None
+        for b in all_books:
+            existing = db.scalar(
+                select(Loan).where(
+                    and_(Loan.book_id == b.id, Loan.member_id == member.id,
+                         Loan.status.in_(["Borrowed", "Overdue", "issued", "overdue"]))
+                )
+            )
+            if not existing and member.can_borrow()[0]:
+                book = b
+                break
+        # If member has too many loans, use a different member
+        if book is None:
+            for m in db.query(Member).all():
+                if not m.can_borrow()[0]:
+                    continue
+                for b in all_books:
+                    existing = db.scalar(
+                        select(Loan).where(
+                            and_(Loan.book_id == b.id, Loan.member_id == m.id,
+                                 Loan.status.in_(["Borrowed", "Overdue", "issued", "overdue"]))
+                        )
+                    )
+                    if not existing:
+                        book = b
+                        member = m
+                        break
+                if book:
+                    break
+        assert book is not None, "No free book/member combo available to test issue"
         book_id = book.id
         member_id = member.id
         initial_copies = book.available_copies

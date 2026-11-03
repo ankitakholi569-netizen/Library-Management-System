@@ -25,7 +25,7 @@ class LoginDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"{APP_NAME} — Authentication")
-        self.setFixedSize(440, 520)
+        self.setFixedSize(480, 580)
         self.authenticated_user = None
         self._setup_ui()
 
@@ -101,23 +101,40 @@ class LoginDialog(QDialog):
         presets_lbl.setStyleSheet("font-size: 10px; font-weight: 700; color: #94A3B8;")
         c_layout.addWidget(presets_lbl)
 
-        preset_row = QHBoxLayout()
-        btn_admin = QPushButton("Chief Librarian")
-        btn_admin.setStyleSheet("font-size: 11px; padding: 4px 8px;")
+        presets_lbl.setText("ALL 5 SRS STAKEHOLDER PRESETS (1-CLICK LOGIN):")
+
+        # Row 1: Administrative & Operations Staff
+        row1 = QHBoxLayout()
+        btn_admin = QPushButton("👑 Library Admin")
+        btn_admin.setStyleSheet("font-size: 11px; font-weight: 600; padding: 6px 8px; background: #FEF3C7; border: 1px solid #FCD34D;")
         btn_admin.clicked.connect(lambda: self._set_credentials("admin", "admin123"))
 
-        btn_desk = QPushButton("Circulation Desk")
-        btn_desk.setStyleSheet("font-size: 11px; padding: 4px 8px;")
+        btn_desk = QPushButton("🔄 Circulation Staff")
+        btn_desk.setStyleSheet("font-size: 11px; font-weight: 600; padding: 6px 8px; background: #E0E7FF; border: 1px solid #C7D2FE;")
         btn_desk.clicked.connect(lambda: self._set_credentials("priya_desk", "priya123"))
 
-        btn_catalog = QPushButton("Catalog Staff")
-        btn_catalog.setStyleSheet("font-size: 11px; padding: 4px 8px;")
+        btn_catalog = QPushButton("📦 Catalog Manager")
+        btn_catalog.setStyleSheet("font-size: 11px; font-weight: 600; padding: 6px 8px; background: #F1F5F9; border: 1px solid #CBD5E1;")
         btn_catalog.clicked.connect(lambda: self._set_credentials("rahul_catalog", "rahul123"))
 
-        preset_row.addWidget(btn_admin)
-        preset_row.addWidget(btn_desk)
-        preset_row.addWidget(btn_catalog)
-        c_layout.addLayout(preset_row)
+        row1.addWidget(btn_admin)
+        row1.addWidget(btn_desk)
+        row1.addWidget(btn_catalog)
+        c_layout.addLayout(row1)
+
+        # Row 2: Patrons & Academic Stakeholders
+        row2 = QHBoxLayout()
+        btn_student = QPushButton("🎓 Student (Kiosk)")
+        btn_student.setStyleSheet("font-size: 11px; font-weight: 600; padding: 6px 8px; background: #D1FAE5; border: 1px solid #A7F3D0;")
+        btn_student.clicked.connect(lambda: self._set_credentials("rohit_student", "student123"))
+
+        btn_faculty = QPushButton("🔬 Faculty Member")
+        btn_faculty.setStyleSheet("font-size: 11px; font-weight: 600; padding: 6px 8px; background: #EDE9FE; border: 1px solid #DDD6FE;")
+        btn_faculty.clicked.connect(lambda: self._set_credentials("prof_mehta", "faculty123"))
+
+        row2.addWidget(btn_student)
+        row2.addWidget(btn_faculty)
+        c_layout.addLayout(row2)
 
         main_layout.addWidget(card)
 

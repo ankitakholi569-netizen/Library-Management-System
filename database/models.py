@@ -116,6 +116,17 @@ class Book(Base):
     available_copies: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     shelf_location: Mapped[str] = mapped_column(String(60), default="Aisle 1 - Rack A", nullable=False)
 
+    # FR-02 Research & Citation Fields (Faculty Member)
+    citation_count: Mapped[int] = mapped_column(Integer, default=0, index=True)
+    is_peer_reviewed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    doi: Mapped[str] = mapped_column(String(80), default="")
+    edition: Mapped[str] = mapped_column(String(50), default="1st Edition")
+
+    # FR-04 Inward GRN & FEFO Stock Ledger Fields (Catalog Manager)
+    supplier_grn: Mapped[str] = mapped_column(String(50), default="")
+    batch_expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    unit_cost: Mapped[float] = mapped_column(Float, default=0.0)
+
     # TQM Inspection Fields
     defect_flag: Mapped[bool] = mapped_column(Boolean, default=False)
     defect_notes: Mapped[str] = mapped_column(String(255), default="")
@@ -153,6 +164,13 @@ class Book(Base):
             "total_copies": self.total_copies,
             "available_copies": self.available_copies,
             "shelf_location": self.shelf_location,
+            "citation_count": self.citation_count,
+            "is_peer_reviewed": self.is_peer_reviewed,
+            "doi": self.doi,
+            "edition": self.edition,
+            "supplier_grn": self.supplier_grn,
+            "batch_expiry_date": self.batch_expiry_date.strftime("%Y-%m-%d") if self.batch_expiry_date else "",
+            "unit_cost": self.unit_cost,
             "defect_flag": self.defect_flag,
             "defect_notes": self.defect_notes,
         }
@@ -496,6 +514,9 @@ class QualityLog(Base):
     execution_time_ms: Mapped[float] = mapped_column(Float, default=0.0)  # Latency monitoring for DB optimization
     details: Mapped[str] = mapped_column(String(255), default="")
     remedial_action: Mapped[str] = mapped_column(String(255), default="Standard Operating Procedure (SOP) verified")
+    # FR-05 21 CFR Part 11 Electronic Signature & Tamper-Evident SHA-256 Hash
+    audit_hash_sha256: Mapped[str] = mapped_column(String(64), default="")
+    digital_signature: Mapped[str] = mapped_column(String(120), default="")
 
     def to_dict(self) -> dict:
         return {
@@ -507,7 +528,118 @@ class QualityLog(Base):
             "execution_time_ms": self.execution_time_ms,
             "details": self.details,
             "remedial_action": self.remedial_action,
+            "audit_hash_sha256": self.audit_hash_sha256,
+            "digital_signature": self.digital_signature,
         }
 
     def __repr__(self) -> str:
         return f"<QualityLog id={self.id} Module='{self.module}' Status='{self.status}' Latency={self.execution_time_ms}ms>"
+
+
+# ==============================================================================
+# 8. STOCK LEDGER & GOODS RECEIPT NOTE (GRN) MODEL (FR-04)
+# ==============================================================================
+class StockLedger(Base):
+    """
+    FEFO / FIFO Stock Ledger and Inward Goods Receipt Note (GRN) Entry.
+    SRS FR-04: FEFO stock ledger and inward GRN entry.
+    TQM Quality Gate: 100% stock balance reconciliation.
+    """
+    __tablename__ = "stock_ledger"
+    __table_args__ = (
+        Index("idx_grn_number", "grn_number"),
+        Index("idx_grn_book_id", "book_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    grn_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    supplier_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    invoice_no: Mapped[str] = mapped_column(String(50), default="")
+    book_id: Mapped[int] = mapped_column(Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    quantity_received: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    total_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    batch_code: Mapped[str] = mapped_column(String(50), default="")
+    received_date: Mapped[date] = mapped_column(Date, default=date.today)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # For FEFO sorting
+    created_by: Mapped[str] = mapped_column(String(50), default="Catalog Manager")
+    is_reconciled: Mapped[bool] = mapped_column(Boolean, default=True)
+    reconciled_stock: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationship
+    book = relationship("Book")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "grn_number": self.grn_number,
+            "supplier_name": self.supplier_name,
+            "invoice_no": self.invoice_no,
+            "book_id": self.book_id,
+            "book_title": self.book.title if self.book else "",
+            "quantity_received": self.quantity_received,
+            "unit_cost": self.unit_cost,
+            "total_amount": self.total_amount,
+            "batch_code": self.batch_code,
+            "received_date": self.received_date.strftime("%Y-%m-%d") if self.received_date else "",
+            "expiry_date": self.expiry_date.strftime("%Y-%m-%d") if self.expiry_date else "",
+            "created_by": self.created_by,
+            "is_reconciled": self.is_reconciled,
+            "reconciled_stock": self.reconciled_stock,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
+        }
+
+    def __repr__(self) -> str:
+        return f"<StockLedger GRN={self.grn_number} BookID={self.book_id} Qty={self.quantity_received}>"
+
+
+# ==============================================================================
+# 9. DAILY Z-REPORT TILL CLOSE MODEL (FR-05)
+# ==============================================================================
+class DailyZReport(Base):
+    """
+    Daily Financial and Operational Till Close Z-Report (FR-05).
+    SRS FR-05: Daily Z-Report till close and 21 CFR Part 11 logs.
+    TQM Quality Gate: Zero audit variance (variance == 0.00).
+    """
+    __tablename__ = "daily_z_reports"
+    __table_args__ = (
+        Index("idx_z_report_date", "report_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    report_date: Mapped[date] = mapped_column(Date, unique=True, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    generated_by: Mapped[str] = mapped_column(String(50), default="Library Admin")
+    opening_cash: Mapped[float] = mapped_column(Float, default=0.0)
+    fines_collected: Mapped[float] = mapped_column(Float, default=0.0)
+    loans_issued_count: Mapped[int] = mapped_column(Integer, default=0)
+    loans_returned_count: Mapped[int] = mapped_column(Integer, default=0)
+    active_overdue_count: Mapped[int] = mapped_column(Integer, default=0)
+    expected_cash: Mapped[float] = mapped_column(Float, default=0.0)
+    closing_cash: Mapped[float] = mapped_column(Float, default=0.0)
+    audit_variance: Mapped[float] = mapped_column(Float, default=0.0)  # TQM SLA: exactly 0.00
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=True)
+    audit_hash_sha256: Mapped[str] = mapped_column(String(64), default="")  # 21 CFR Part 11 tamper-evident checksum
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "report_date": self.report_date.strftime("%Y-%m-%d"),
+            "generated_at": self.generated_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "generated_by": self.generated_by,
+            "opening_cash": self.opening_cash,
+            "fines_collected": self.fines_collected,
+            "loans_issued_count": self.loans_issued_count,
+            "loans_returned_count": self.loans_returned_count,
+            "active_overdue_count": self.active_overdue_count,
+            "expected_cash": self.expected_cash,
+            "closing_cash": self.closing_cash,
+            "audit_variance": self.audit_variance,
+            "is_closed": self.is_closed,
+            "audit_hash_sha256": self.audit_hash_sha256,
+        }
+
+    def __repr__(self) -> str:
+        return f"<DailyZReport date={self.report_date} Variance={self.audit_variance} Closed={self.is_closed}>"

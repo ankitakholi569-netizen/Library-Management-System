@@ -77,6 +77,31 @@ def init_db():
                     conn.exec_driver_sql("ALTER TABLE users ADD COLUMN hourly_rate FLOAT DEFAULT 120.0")
                 if "base_salary" not in user_cols:
                     conn.exec_driver_sql("ALTER TABLE users ADD COLUMN base_salary FLOAT DEFAULT 24000.0")
+
+            book_cols = [c[1] for c in conn.exec_driver_sql("PRAGMA table_info(books)").fetchall()]
+            if book_cols:
+                if "citation_count" not in book_cols:
+                    conn.exec_driver_sql("ALTER TABLE books ADD COLUMN citation_count INTEGER DEFAULT 0")
+                if "is_peer_reviewed" not in book_cols:
+                    conn.exec_driver_sql("ALTER TABLE books ADD COLUMN is_peer_reviewed BOOLEAN DEFAULT 0")
+                if "doi" not in book_cols:
+                    conn.exec_driver_sql("ALTER TABLE books ADD COLUMN doi VARCHAR(80) DEFAULT ''")
+                if "edition" not in book_cols:
+                    conn.exec_driver_sql("ALTER TABLE books ADD COLUMN edition VARCHAR(50) DEFAULT '1st Edition'")
+                if "supplier_grn" not in book_cols:
+                    conn.exec_driver_sql("ALTER TABLE books ADD COLUMN supplier_grn VARCHAR(50) DEFAULT ''")
+                if "batch_expiry_date" not in book_cols:
+                    conn.exec_driver_sql("ALTER TABLE books ADD COLUMN batch_expiry_date DATE")
+                if "unit_cost" not in book_cols:
+                    conn.exec_driver_sql("ALTER TABLE books ADD COLUMN unit_cost FLOAT DEFAULT 0.0")
+
+            qlog_cols = [c[1] for c in conn.exec_driver_sql("PRAGMA table_info(quality_logs)").fetchall()]
+            if qlog_cols:
+                if "audit_hash_sha256" not in qlog_cols:
+                    conn.exec_driver_sql("ALTER TABLE quality_logs ADD COLUMN audit_hash_sha256 VARCHAR(64) DEFAULT ''")
+                if "digital_signature" not in qlog_cols:
+                    conn.exec_driver_sql("ALTER TABLE quality_logs ADD COLUMN digital_signature VARCHAR(120) DEFAULT ''")
+
             conn.commit()
     except Exception as exc:
         logger.warning(f"Notice on schema migration check: {exc}")

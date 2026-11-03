@@ -83,13 +83,13 @@ def test_gui_layer():
         "full_name": "Dr. Anita Sharma",
         "role": "Chief Librarian"
     })
-    assert main_win.stack.count() == 7, f"Expected 7 views in stack, got {main_win.stack.count()}"
+    assert main_win.stack.count() == 11, f"Expected 11 views in stack, got {main_win.stack.count()}"
     print(f"  [OK] MainWindow shell initialized with {main_win.stack.count()} navigation views")
 
-    for i in range(7):
+    for i in range(11):
         main_win.switch_view(i)
         assert main_win.stack.currentIndex() == i
-    print("  [OK] Navigation view switching across all 7 modules confirmed")
+    print("  [OK] Navigation view switching across all 11 modules confirmed")
 
     # 6. Quality Audit Widget Verification
     print("\n[Step 6/6] Testing QualityAuditWidget (ISO 9001 Latency Ledger)...")

@@ -14,6 +14,8 @@ All queries use the B-Tree indexes defined in database/models.py.
 
 from __future__ import annotations
 
+from services.rate_limiter import check_student_kiosk_limit, check_faculty_limit
+
 import time
 from datetime import date
 from typing import Any, Dict, List, Optional, Tuple
@@ -404,3 +406,174 @@ def get_search_kpi_summary(limit: int = 100) -> Dict[str, Any]:
             "sla_breaches":   len(breaches),
             "recent": [r.to_dict() for r in recent[:20]],
         }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 4 — STAKEHOLDER SPECIFIC SEARCH SERVICES (FR-01 & FR-02)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def student_kiosk_search(
+    query: str = "",
+    limit: int = 50,
+    client_id: str = "kiosk_default"
+) -> Dict[str, Any]:
+    """
+    SRS FR-01: Zero-navigation Ctrl+K bar and sub-85ms search for Student (Kiosk).
+    TQM Quality Gate: 30 req/min rate limit.
+    Enforces rate limit, measures execution latency against 85ms SLA,
+    and returns live textbook availability with shelf locations.
+    """
+    # 1. Enforce 30 req/min TQM Quality Gate
+    allowed, count, remaining, retry_after = check_student_kiosk_limit(client_id)
+    if not allowed:
+        return {
+            "success": False,
+            "error": "Rate limit exceeded (30 req/min). Please wait before searching again.",
+            "rate_limit_breach": True,
+            "current_rate": count,
+            "rate_limit": 30,
+            "retry_after_seconds": retry_after,
+            "results": [],
+            "total": 0,
+            "latency_ms": 0.0,
+            "sla_pass": False,
+        }
+
+    t0 = time.perf_counter()
+    q = (query or "").strip()
+    with get_db() as db:
+        stmt = select(Book)
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(
+                    Book.title.ilike(pattern),
+                    Book.author.ilike(pattern),
+                    Book.isbn.ilike(pattern),
+                    Book.category.ilike(pattern),
+                )
+            )
+        stmt = stmt.order_by(Book.title.asc()).limit(limit)
+        books = db.scalars(stmt).all()
+        results = [b.to_dict() for b in books]
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    sla_pass = elapsed_ms <= 85.0
+
+    _record_search_kpi(
+        module="KIOSK",
+        action="STUDENT_SEARCH",
+        latency_ms=elapsed_ms,
+        result_count=len(results),
+        query_text=q
+    )
+
+    return {
+        "success": True,
+        "stakeholder": "Student (Kiosk)",
+        "specification": "FR-01: Zero-navigation Ctrl+K bar & sub-85ms search",
+        "quality_gate": "30 req/min rate limit",
+        "results": results,
+        "total": len(results),
+        "latency_ms": round(elapsed_ms, 2),
+        "sla_target_ms": 85.0,
+        "sla_pass": sla_pass,
+        "rate_limit": {
+            "current_usage": count,
+            "max_allowed": 30,
+            "remaining": remaining,
+        }
+    }
+
+
+def faculty_research_search(
+    query: str = "",
+    category: Optional[str] = None,
+    min_year: Optional[int] = None,
+    max_year: Optional[int] = None,
+    peer_reviewed_only: bool = False,
+    sort_by: str = "citations",
+    limit: int = 50,
+    client_id: str = "faculty_default"
+) -> Dict[str, Any]:
+    """
+    SRS FR-02: Multi-attribute research filter & citation sort for Faculty Member.
+    TQM Quality Gate: 120 req/min rate limit.
+    Supports filtering by research category, publication date range, peer-reviewed journals,
+    and sorting by citation metrics or publication year.
+    """
+    # 1. Enforce 120 req/min TQM Quality Gate
+    allowed, count, remaining, retry_after = check_faculty_limit(client_id)
+    if not allowed:
+        return {
+            "success": False,
+            "error": "Rate limit exceeded (120 req/min). Please wait before searching again.",
+            "rate_limit_breach": True,
+            "current_rate": count,
+            "rate_limit": 120,
+            "retry_after_seconds": retry_after,
+            "results": [],
+            "total": 0,
+            "latency_ms": 0.0,
+        }
+
+    t0 = time.perf_counter()
+    q = (query or "").strip()
+    with get_db() as db:
+        stmt = select(Book)
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                or_(
+                    Book.title.ilike(pattern),
+                    Book.author.ilike(pattern),
+                    Book.isbn.ilike(pattern),
+                    Book.doi.ilike(pattern),
+                )
+            )
+        if category and category not in ("All", ""):
+            stmt = stmt.where(Book.category == category)
+        if min_year:
+            stmt = stmt.where(Book.year >= min_year)
+        if max_year:
+            stmt = stmt.where(Book.year <= max_year)
+        if peer_reviewed_only:
+            stmt = stmt.where(Book.is_peer_reviewed == True)
+
+        if sort_by == "citations":
+            stmt = stmt.order_by(Book.citation_count.desc(), Book.year.desc())
+        elif sort_by == "year_desc":
+            stmt = stmt.order_by(Book.year.desc(), Book.citation_count.desc())
+        elif sort_by == "year_asc":
+            stmt = stmt.order_by(Book.year.asc())
+        else:
+            stmt = stmt.order_by(Book.title.asc())
+
+        stmt = stmt.limit(limit)
+        books = db.scalars(stmt).all()
+        results = [b.to_dict() for b in books]
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+    _record_search_kpi(
+        module="FACULTY_RESEARCH",
+        action="CITATION_SEARCH",
+        latency_ms=elapsed_ms,
+        result_count=len(results),
+        query_text=q
+    )
+
+    return {
+        "success": True,
+        "stakeholder": "Faculty Member",
+        "specification": "FR-02: Multi-attribute research filter & citation sort",
+        "quality_gate": "120 req/min rate limit",
+        "results": results,
+        "total": len(results),
+        "latency_ms": round(elapsed_ms, 2),
+        "rate_limit": {
+            "current_usage": count,
+            "max_allowed": 120,
+            "remaining": remaining,
+        }
+    }

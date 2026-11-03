@@ -15,13 +15,34 @@ from services.logger_service import get_logger, log_quality_event, timed_operati
 
 logger = get_logger("auth_service")
 
-# Standardized Role Constants
-ROLE_CHIEF_LIBRARIAN = "Chief Librarian"
-ROLE_ASSISTANT_LIBRARIAN = "Assistant Librarian"
-ROLE_LIBRARY_ASSISTANT = "Library Assistant"
-ROLE_STUDENT = "Student"
+# Standardized Stakeholder Personas & Role Constants (SRS Alignment)
+ROLE_LIBRARY_ADMIN = "Library Admin"
+ROLE_CHIEF_LIBRARIAN = "Library Admin"           # Compatibility Alias for FR-05
+ROLE_CIRCULATION_STAFF = "Circulation Staff"
+ROLE_ASSISTANT_LIBRARIAN = "Circulation Staff"   # Compatibility Alias for FR-03
+ROLE_CATALOG_MANAGER = "Catalog Manager"
+ROLE_LIBRARY_ASSISTANT = "Catalog Manager"       # Compatibility Alias for FR-04
+ROLE_STUDENT_KIOSK = "Student (Kiosk)"
+ROLE_STUDENT = "Student (Kiosk)"                 # Compatibility Alias for FR-01
+ROLE_FACULTY_MEMBER = "Faculty Member"
 
-STAFF_ROLES = [ROLE_CHIEF_LIBRARIAN, ROLE_ASSISTANT_LIBRARIAN, ROLE_LIBRARY_ASSISTANT]
+# All 5 SRS Stakeholder Personas
+ALL_STAKEHOLDER_ROLES = [
+    ROLE_STUDENT_KIOSK,
+    ROLE_FACULTY_MEMBER,
+    ROLE_CIRCULATION_STAFF,
+    ROLE_CATALOG_MANAGER,
+    ROLE_LIBRARY_ADMIN,
+]
+
+STAFF_ROLES = [
+    ROLE_LIBRARY_ADMIN,
+    ROLE_CHIEF_LIBRARIAN,
+    ROLE_CIRCULATION_STAFF,
+    ROLE_ASSISTANT_LIBRARIAN,
+    ROLE_CATALOG_MANAGER,
+    ROLE_LIBRARY_ASSISTANT,
+]
 
 
 def hash_password(plain_password: str) -> str:

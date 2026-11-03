@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select, func
 
 from database.db import get_db, init_db
-from database.models import User, Book, Member, Loan, StaffShift, StaffPayroll, QualityLog
+from database.models import User, Book, Member, Loan, StaffShift, StaffPayroll, QualityLog, StockLedger, DailyZReport
 
 logger = logging.getLogger("seed")
 
@@ -28,35 +28,60 @@ logger = logging.getLogger("seed")
 # ──────────────────────────────────────────────────────────────────────────────
 
 SEED_USERS = [
+    # 1. Stakeholder: Library Admin (FR-05)
     {
         "username": "admin",
         "password": "admin123",
         "full_name": "Dr. Anita Sharma",
-        "role": "Chief Librarian",
+        "role": "Library Admin",
         "email": "anita.sharma@college.edu",
         "department": "Library Administration",
         "hourly_rate": 150.0,
         "base_salary": 45000.0,
     },
+    # 2. Stakeholder: Circulation Staff (FR-03)
     {
         "username": "priya_desk",
         "password": "priya123",
         "full_name": "Priya Nair",
-        "role": "Assistant Librarian",
+        "role": "Circulation Staff",
         "email": "priya.nair@college.edu",
         "department": "Circulation & Lending",
         "hourly_rate": 120.0,
         "base_salary": 28000.0,
     },
+    # 3. Stakeholder: Catalog Manager (FR-04)
     {
         "username": "rahul_catalog",
         "password": "rahul123",
         "full_name": "Rahul Verma",
-        "role": "Library Assistant",
+        "role": "Catalog Manager",
         "email": "rahul.verma@college.edu",
         "department": "Cataloging & Acquisition",
         "hourly_rate": 110.0,
         "base_salary": 22000.0,
+    },
+    # 4. Stakeholder: Student (Kiosk) (FR-01)
+    {
+        "username": "rohit_student",
+        "password": "student123",
+        "full_name": "Rohit Kumar (Student)",
+        "role": "Student (Kiosk)",
+        "email": "rohit.k@student.college.edu",
+        "department": "Computer Science",
+        "hourly_rate": 0.0,
+        "base_salary": 0.0,
+    },
+    # 5. Stakeholder: Faculty Member (FR-02)
+    {
+        "username": "prof_mehta",
+        "password": "faculty123",
+        "full_name": "Prof. Rajesh Mehta",
+        "role": "Faculty Member",
+        "email": "rajesh.mehta@college.edu",
+        "department": "Mechanical Engineering",
+        "hourly_rate": 0.0,
+        "base_salary": 75000.0,
     },
 ]
 
@@ -319,6 +344,9 @@ def _seed_books(db) -> list:
     for b in SEED_BOOKS:
         existing = db.scalar(select(Book).where(Book.isbn == b["isbn"]))
         if not existing:
+            citations = b.get("citation_count", (abs(hash(b["title"])) % 850) * 12 + 150)
+            peer_rev = b.get("is_peer_reviewed", b["year"] >= 2012)
+            doi_val = b.get("doi", f"10.1145/{b['isbn'].replace('-', '')[:10]}")
             book = Book(
                 title=b["title"],
                 author=b["author"],
@@ -328,6 +356,13 @@ def _seed_books(db) -> list:
                 total_copies=b["total_copies"],
                 available_copies=b["available_copies"],
                 shelf_location=b["shelf_location"],
+                citation_count=citations,
+                is_peer_reviewed=peer_rev,
+                doi=doi_val,
+                edition="1st Edition",
+                supplier_grn="GRN-2026-001",
+                unit_cost=650.0,
+                batch_expiry_date=date.today() + timedelta(days=730),
                 defect_flag=False,
                 defect_notes="",
             )
@@ -451,7 +486,7 @@ def _seed_loans(db):
 
 def _seed_shifts_and_payroll(db):
     """Seeds staff shifts and monthly payroll for the current month."""
-    users = db.scalars(select(User).where(User.role != "Student")).all()
+    users = db.scalars(select(User).where(User.hourly_rate > 0.0)).all()
     if not users:
         return
 
@@ -559,6 +594,71 @@ def _seed_quality_logs(db):
 # PUBLIC ENTRY POINT
 # ──────────────────────────────────────────────────────────────────────────────
 
+
+
+def _seed_stock_ledger(db):
+    """Seeds initial FEFO stock ledger entries (FR-04)."""
+    count = db.scalar(select(func.count(StockLedger.id)))
+    if count > 0:
+        return
+    books = db.scalars(select(Book).limit(5)).all()
+    today = date.today()
+    suppliers = ["Oxford University Press", "Pearson India", "McGraw Hill Education", "Cambridge Press", "Wiley India"]
+    for idx, b in enumerate(books):
+        entry = StockLedger(
+            grn_number=f"GRN-2026-{idx+1:03d}",
+            supplier_name=suppliers[idx % len(suppliers)],
+            invoice_no=f"INV-99{idx+1}0",
+            book_id=b.id,
+            quantity_received=b.total_copies,
+            unit_cost=650.0,
+            total_amount=b.total_copies * 650.0,
+            batch_code=f"BATCH-2026-{b.id:02d}",
+            received_date=today - timedelta(days=30 - idx * 5),
+            expiry_date=today + timedelta(days=365 + idx * 60),  # FEFO sorting
+            created_by="Catalog Manager",
+            is_reconciled=True,
+            reconciled_stock=b.total_copies,
+        )
+        db.add(entry)
+    db.flush()
+    logger.info("  Seeded FEFO stock ledger records.")
+
+
+def _seed_z_reports(db):
+    """Seeds initial Daily Z-Report entries with Zero Audit Variance (FR-05)."""
+    count = db.scalar(select(func.count(DailyZReport.id)))
+    if count > 0:
+        return
+    import hashlib
+    today = date.today()
+    for offset in (2, 1):
+        r_date = today - timedelta(days=offset)
+        opening = 2500.0
+        fines = 75.0 * offset
+        expected = opening + fines
+        closing = expected
+        variance = 0.0  # Zero Audit Variance
+        payload = f"ZREPORT|{r_date}|OPEN={opening}|FINES={fines}|EXPECTED={expected}|CLOSE={closing}|VAR={variance}|BY=Library Admin"
+        z_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        z_rep = DailyZReport(
+            report_date=r_date,
+            generated_by="Library Admin",
+            opening_cash=opening,
+            fines_collected=fines,
+            loans_issued_count=6 + offset,
+            loans_returned_count=4 + offset,
+            active_overdue_count=2,
+            expected_cash=expected,
+            closing_cash=closing,
+            audit_variance=variance,
+            is_closed=True,
+            audit_hash_sha256=z_hash,
+        )
+        db.add(z_rep)
+    db.flush()
+    logger.info("  Seeded Daily Z-Report entries (Zero Audit Variance).")
+
 def seed_database():
     """
     Seeds production-ready sample records across all modules.
@@ -574,5 +674,7 @@ def seed_database():
         _seed_loans(db)
         _seed_shifts_and_payroll(db)
         _seed_quality_logs(db)
+        _seed_stock_ledger(db)
+        _seed_z_reports(db)
 
     logger.info("Database seed complete. System ready.")
