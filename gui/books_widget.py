@@ -74,6 +74,9 @@ class BookDialog(QDialog):
         self.f_title    = QLineEdit(); self.f_title.setPlaceholderText("e.g. Introduction to Algorithms")
         self.f_author   = QLineEdit(); self.f_author.setPlaceholderText("e.g. Cormen, Leiserson, Rivest")
         self.f_isbn     = QLineEdit(); self.f_isbn.setPlaceholderText("e.g. 978-0-262-03384-8")
+        self.btn_autofill = QPushButton("🔍 Autofill ISBN")
+        self.btn_autofill.setStyleSheet("background-color:#0284C7;color:white;font-weight:700;padding:6px 12px;border-radius:6px;border:none;")
+        self.btn_autofill.clicked.connect(self._autofill_from_isbn)
         self.f_category = QComboBox()
         self.f_category.setEditable(True)
         cats = ["Computer Science", "Electronics", "Mathematics", "Mechanical Engineering",
@@ -89,9 +92,13 @@ class BookDialog(QDialog):
         self.f_notes  = QTextEdit(); self.f_notes.setPlaceholderText("Defect notes (required if marked defective)...")
         self.f_notes.setMaximumHeight(70)
 
+        isbn_layout = QHBoxLayout()
+        isbn_layout.addWidget(self.f_isbn, 1)
+        isbn_layout.addWidget(self.btn_autofill)
+
         form.addRow("Title *",          self.f_title)
         form.addRow("Author(s) *",      self.f_author)
-        form.addRow("ISBN *",           self.f_isbn)
+        form.addRow("ISBN *",           isbn_layout)
         form.addRow("Category *",       self.f_category)
         form.addRow("Year Published *", self.f_year)
         form.addRow("Total Copies *",   self.f_copies)
@@ -108,6 +115,44 @@ class BookDialog(QDialog):
         btns.accepted.connect(self._validate_and_accept)
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
+
+    
+    def _autofill_from_isbn(self):
+        """Auto-fetches book metadata from OpenLibrary / Google Books API."""
+        isbn = self.f_isbn.text().strip()
+        if not isbn:
+            QMessageBox.information(self, "ISBN Required", "Please enter an ISBN number first.")
+            return
+
+        self.btn_autofill.setText("Fetching...")
+        self.btn_autofill.setEnabled(False)
+        from services.isbn_service import fetch_isbn_metadata
+        meta = fetch_isbn_metadata(isbn)
+        self.btn_autofill.setText("🔍 Autofill ISBN")
+        self.btn_autofill.setEnabled(True)
+
+        if meta.get("found"):
+            if meta.get("title"):
+                self.f_title.setText(meta["title"])
+            if meta.get("author"):
+                self.f_author.setText(meta["author"])
+            if meta.get("year"):
+                self.f_year.setValue(int(meta["year"]))
+            if meta.get("category"):
+                idx = self.f_category.findText(meta["category"])
+                if idx >= 0:
+                    self.f_category.setCurrentIndex(idx)
+                else:
+                    self.f_category.setCurrentText(meta["category"])
+            QMessageBox.information(
+                self, "Autofill Success",
+                f"Metadata retrieved via {meta.get('source')}:\n\n"
+                f"Title: {meta.get('title')}\n"
+                f"Author: {meta.get('author')}\n"
+                f"Year: {meta.get('year')} ({meta.get('latency_ms', 0)}ms)"
+            )
+        else:
+            QMessageBox.warning(self, "Not Found", meta.get("message", "ISBN metadata not found."))
 
     def _populate(self, d: dict):
         self.f_title.setText(d.get("title", ""))

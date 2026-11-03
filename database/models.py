@@ -643,3 +643,56 @@ class DailyZReport(Base):
 
     def __repr__(self) -> str:
         return f"<DailyZReport date={self.report_date} Variance={self.audit_variance} Closed={self.is_closed}>"
+
+
+# ==============================================================================
+# 10. BOOK HOLD & WAITLIST QUEUE MODEL (FR-01 Kiosk Enhancement)
+# ==============================================================================
+class BookHold(Base):
+    """
+    Automated Student Hold & Reservation Waitlist Queue.
+    Enables students to reserve titles currently out of stock (available_copies == 0).
+    When the book is returned at the circulation desk, the system automatically
+    flags the hold as 'Ready' and notifies the student.
+    """
+    __tablename__ = "book_holds"
+    __table_args__ = (
+        Index("idx_hold_book_status", "book_id", "status"),
+        Index("idx_hold_member", "member_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    book_id: Mapped[int] = mapped_column(Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
+    member_id: Mapped[int] = mapped_column(Integer, ForeignKey("members.id", ondelete="CASCADE"), nullable=False)
+    request_date: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="Pending", nullable=False)  # Pending, Ready, Fulfilled, Cancelled
+    notified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, default=1)
+    notes: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    book = relationship("Book")
+    member = relationship("Member")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "book_id": self.book_id,
+            "book_title": self.book.title if self.book else "",
+            "isbn": self.book.isbn if self.book else "",
+            "member_id": self.member_id,
+            "member_name": self.member.name if self.member else "",
+            "member_email": self.member.email if self.member else "",
+            "request_date": self.request_date.strftime("%Y-%m-%d") if self.request_date else "",
+            "status": self.status,
+            "notified_at": self.notified_at.strftime("%Y-%m-%d %H:%M:%S") if self.notified_at else "",
+            "expiry_date": self.expiry_date.strftime("%Y-%m-%d") if self.expiry_date else "",
+            "priority": self.priority,
+            "notes": self.notes,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else "",
+        }
+
+    def __repr__(self) -> str:
+        return f"<BookHold id={self.id} BookID={self.book_id} MemberID={self.member_id} Status={self.status}>"

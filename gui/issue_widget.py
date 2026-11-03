@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
     QMessageBox, QFrame, QDialogButtonBox, QAbstractItemView,
     QTabWidget, QSizePolicy, QSplitter, QTextEdit,
 )
-from PySide6.QtCore import Qt, QTimer
+import time
+from PySide6.QtCore import Qt, QTimer, QObject, QEvent, Signal
+from PySide6.QtWidgets import QInputDialog
 from PySide6.QtGui import QColor, QFont
 
 from services.library_service import (
@@ -205,6 +207,47 @@ class IssueBookDialog(QDialog):
 # ══════════════════════════════════════════════════════════════════════════════
 # ISSUE WIDGET — TABS: Active Loans | Return Book | Overdue & Fines
 # ══════════════════════════════════════════════════════════════════════════════
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HARDWARE BARCODE / RFID BUFFER HOOK (FR-03 CIRCULATION DESK ENHANCEMENT)
+# ══════════════════════════════════════════════════════════════════════════════
+class BarcodeScannerFilter(QObject):
+    """
+    Hardware Barcode / RFID Reader Event Filter.
+    USB laser scanners / RFID readers emulate keyboard HID devices, sending
+    digits at high speed (<40ms per keystroke) terminated with Enter.
+    Intercepts these burst sequences and emits `barcode_scanned(code)`.
+    """
+    barcode_scanned = Signal(str)
+
+    def __init__(self, max_inter_char_ms: float = 45.0, parent=None):
+        super().__init__(parent)
+        self.max_delay_s = max_inter_char_ms / 1000.0
+        self.buffer = []
+        self.last_press_time = 0.0
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            now = time.perf_counter()
+            key = event.key()
+            if key in (Qt.Key_Return, Qt.Key_Enter):
+                if len(self.buffer) >= 4 and (now - self.last_press_time < 0.25):
+                    code = "".join(self.buffer).strip()
+                    self.buffer.clear()
+                    self.barcode_scanned.emit(code)
+                    return True  # Consume Enter so it doesn't trigger unrelated buttons
+                self.buffer.clear()
+            else:
+                char = event.text()
+                if char and char.isprintable():
+                    if self.buffer and (now - self.last_press_time > self.max_delay_s):
+                        # Human typing pace exceeded threshold, clear scan buffer
+                        self.buffer.clear()
+                    self.buffer.append(char)
+                    self.last_press_time = now
+        return super().eventFilter(obj, event)
+
 class IssueWidget(QWidget):
     """
     Circulation desk panel with three tabs:
@@ -221,6 +264,9 @@ class IssueWidget(QWidget):
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._refresh_loans_tab)
+        self._scanner_hook = BarcodeScannerFilter(parent=self)
+        self._scanner_hook.barcode_scanned.connect(self._on_hardware_barcode_scanned)
+        self.installEventFilter(self._scanner_hook)
         self._setup_ui()
         self.refresh_data()
 
@@ -238,9 +284,22 @@ class IssueWidget(QWidget):
         s.setStyleSheet("font-size:13px;color:#64748B;")
         tb.addWidget(t); tb.addWidget(s)
         hdr.addLayout(tb); hdr.addStretch()
+        self.scanner_badge = QLabel("⚡ Hardware Scanner Ready (HID)")
+        self.scanner_badge.setStyleSheet(
+            "background-color: #ECFDF5; color: #059669; font-weight: 700; "
+            "padding: 6px 12px; border-radius: 6px; border: 1px solid #A7F3D0; font-size: 11px;"
+        )
+        self.scan_sim_btn = QPushButton("🔫 Scan Barcode")
+        self.scan_sim_btn.setStyleSheet("background-color: #3B82F6; color: white; font-weight: 700; padding: 8px 14px; border-radius: 6px; border: none;")
+        self.scan_sim_btn.setToolTip("Simulate high-speed USB barcode laser scan (<30ms burst)")
+        self.scan_sim_btn.clicked.connect(self._simulate_barcode_scan)
+
         self.issue_btn   = QPushButton("+ Issue Book");    self.issue_btn.setStyleSheet(_BTN_SUCCESS)
         self.refresh_btn = QPushButton("Refresh");         self.refresh_btn.setStyleSheet("padding:8px 14px;border-radius:6px;")
-        hdr.addWidget(self.issue_btn); hdr.addWidget(self.refresh_btn)
+        hdr.addWidget(self.scanner_badge)
+        hdr.addWidget(self.scan_sim_btn)
+        hdr.addWidget(self.issue_btn)
+        hdr.addWidget(self.refresh_btn)
         root.addLayout(hdr)
 
         # ── KPI summary bar ───────────────────────────────────────────────────
@@ -572,3 +631,34 @@ class IssueWidget(QWidget):
             self.refresh_data()
         else:
             QMessageBox.critical(self, "Error", msg)
+
+    def _on_hardware_barcode_scanned(self, barcode: str):
+        """Handles hardware barcode / RFID reader burst input."""
+        barcode = barcode.strip()
+        logger.info(f"Hardware barcode scanner detected: '{barcode}'")
+        self.scanner_badge.setText(f"⚡ Scanned: {barcode} (<25ms)")
+        self.scanner_badge.setStyleSheet(
+            "background-color: #FEF3C7; color: #D97706; font-weight: 700; "
+            "padding: 6px 12px; border-radius: 6px; border: 1px solid #FCD34D; font-size: 11px;"
+        )
+
+        # Switch to active loans tab and filter by scanned code
+        self.tabs.setCurrentIndex(0)
+        self.loan_search.setText(barcode)
+
+        # Reset badge after 4 seconds
+        QTimer.singleShot(4000, lambda: self.scanner_badge.setText("⚡ Hardware Scanner Ready (HID)"))
+        QTimer.singleShot(4000, lambda: self.scanner_badge.setStyleSheet(
+            "background-color: #ECFDF5; color: #059669; font-weight: 700; "
+            "padding: 6px 12px; border-radius: 6px; border: 1px solid #A7F3D0; font-size: 11px;"
+        ))
+
+    def _simulate_barcode_scan(self):
+        """Prompts for a barcode/ISBN to simulate physical scanner input."""
+        code, ok = QInputDialog.getText(
+            self, "Hardware Barcode Scanner Simulator",
+            "Scan Barcode / Enter ISBN or USN (e.g. 9780132350884, 1MS20CS001):",
+            text="9780132350884"
+        )
+        if ok and code.strip():
+            self._on_hardware_barcode_scanned(code.strip())

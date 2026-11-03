@@ -1552,11 +1552,64 @@
             } catch (err) { showToast(err.message, false); }
         }
 
+
+        // ── Feature 4: Server-Sent Events (SSE) Live Telemetry Stream ──────
+        function initLiveTelemetrySSE() {
+            if (!window.EventSource) return;
+            try {
+                const es = new EventSource('/api/stream/kpi');
+                es.addEventListener('kpi_update', (e) => {
+                    try {
+                        const payload = JSON.parse(e.data);
+                        if (payload.kpis) {
+                            const k = payload.kpis;
+                            const elB = document.getElementById('kpi-books');
+                            if (elB && k.total_books !== undefined) elB.innerText = k.total_books;
+                            const elL = document.getElementById('kpi-loans');
+                            if (elL && k.active_loans !== undefined) elL.innerText = k.active_loans;
+                            const elM = document.getElementById('kpi-members');
+                            if (elM && k.total_members !== undefined) elM.innerText = k.total_members;
+                            const elO = document.getElementById('kpi-overdue-sub');
+                            if (elO && k.overdue_loans !== undefined) elO.innerText = `${k.overdue_loans} Overdue items`;
+                        }
+                        const liveTag = document.getElementById('live-stream-badge');
+                        if (liveTag && payload.timestamp) {
+                            const t = payload.timestamp.split(' ')[1] || '';
+                            liveTag.innerText = `● Live Telemetry (${t})`;
+                        }
+                    } catch (err) { console.debug(err); }
+                });
+                es.onerror = () => {
+                    const liveTag = document.getElementById('live-stream-badge');
+                    if (liveTag) liveTag.innerText = '○ Telemetry Polling';
+                };
+            } catch (err) { console.debug('SSE init skipped', err); }
+        }
+
+        // ── Feature 3: Automated Hold / Waitlist Queue API ─────────────────
+        async function placeKioskHold(bookId, bookTitle) {
+            try {
+                const res = await fetch('/api/kiosk/hold', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ book_id: bookId, member_id: 1, notes: 'Web Kiosk Reservation' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`Hold placed for '${bookTitle}'! ${data.message}`, true);
+                } else {
+                    showToast(data.message || 'Could not place hold', false);
+                }
+            } catch (err) {
+                showToast(`Hold error: ${err.message}`, false);
+            }
+        }
         // ── Initial Page Load ──────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {
             loadDashboard();
             loadCategories();
             loadDepartments();
+            initLiveTelemetrySSE();
         });
     </script>
 </body>

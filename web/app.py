@@ -14,7 +14,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict
 
-from flask import Flask, jsonify, request, send_file, render_template
+from flask import Flask, jsonify, request, send_file, render_template, Response
 
 from config.settings import APP_NAME, COURSE_NAME, APP_VERSION
 from database.db import get_db
@@ -48,6 +48,8 @@ from services.library_service import (
     refresh_overdue_statuses,
     get_dashboard_kpis,
 )
+from services.isbn_service import fetch_isbn_metadata
+from services.library_service import place_book_hold, get_book_holds, cancel_book_hold
 from services.search_service import (
     student_kiosk_search,
     faculty_research_search,
@@ -760,6 +762,71 @@ def create_app() -> Flask:
     def api_admin_audit_21cfr():
         logs = get_21cfr_audit_trail(limit=100)
         return jsonify({"success": True, "count": len(logs), "audit_logs": logs})
+
+    # ── Feature 1: ISBN Autofill & Metadata Fetching (FR-04) ────────────────
+    @app.route("/api/isbn/lookup/<path:isbn>", methods=["GET"])
+    def api_isbn_lookup(isbn: str):
+        """Auto-fetches book title, author, edition, and cover from OpenLibrary / Google Books."""
+        meta = fetch_isbn_metadata(isbn)
+        return jsonify(meta)
+
+    # ── Feature 3: Automated Hold / Waitlist Queue (FR-01) ─────────────────
+    @app.route("/api/kiosk/hold", methods=["POST"])
+    def api_kiosk_place_hold():
+        """Places a reservation hold on an out-of-stock or high-demand book."""
+        data = request.get_json(silent=True) or request.form.to_dict()
+        book_id = data.get("book_id")
+        member_id = data.get("member_id", 1)
+        notes = data.get("notes", "Web Kiosk Reservation")
+        ok, hold_dict, msg = place_book_hold(book_id=book_id, member_id=member_id, notes=notes)
+        status_code = 201 if ok else 400
+        return jsonify({"success": ok, "hold": hold_dict, "message": msg}), status_code
+
+    @app.route("/api/kiosk/holds", methods=["GET"])
+    def api_kiosk_get_holds():
+        """Retrieves reservation waitlist entries."""
+        book_id = request.args.get("book_id")
+        member_id = request.args.get("member_id")
+        status = request.args.get("status", "All")
+        holds = get_book_holds(book_id=book_id, member_id=member_id, status=status)
+        return jsonify({"success": True, "count": len(holds), "holds": holds})
+
+    @app.route("/api/kiosk/hold/cancel", methods=["POST"])
+    def api_kiosk_cancel_hold():
+        """Cancels an active reservation hold."""
+        data = request.get_json(silent=True) or request.form.to_dict()
+        hold_id = data.get("hold_id")
+        ok, msg = cancel_book_hold(hold_id=hold_id)
+        status_code = 200 if ok else 400
+        return jsonify({"success": ok, "message": msg}), status_code
+
+    # ── Feature 4: Real-time Kiosk Telemetry via Server-Sent Events (SSE) ────
+    @app.route("/api/stream/kpi", methods=["GET"])
+    def api_stream_kpi():
+        """Server-Sent Events (SSE) push stream for live telemetry and hold notifications."""
+        def event_generator():
+            import json
+            import time
+            kpis = get_dashboard_kpis()
+            pending_count = len(get_book_holds(status="Pending"))
+            ready_count = len(get_book_holds(status="Ready"))
+            payload = {
+                "kpis": kpis,
+                "pending_holds": pending_count,
+                "ready_holds": ready_count,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            yield f"event: kpi_update\ndata: {json.dumps(payload)}\n\n"
+
+        return Response(
+            event_generator(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
 
     return app
 

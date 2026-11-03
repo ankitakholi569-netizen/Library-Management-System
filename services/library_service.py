@@ -15,14 +15,14 @@ from __future__ import annotations
 import re
 import time
 import hashlib
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select, func, or_, and_, desc
 
 from config.settings import TQM_CONFIG
 from database.db import get_db
-from database.models import Book, Member, Loan, QualityLog, StockLedger, DailyZReport
+from database.models import Book, Member, Loan, QualityLog, StockLedger, DailyZReport, BookHold
 from services.logger_service import get_logger, log_quality_event, timed_operation
 
 logger = get_logger("library_service")
@@ -664,8 +664,30 @@ def return_book(
             if book:
                 book.return_copy()
 
+            # Automatic Hold / Waitlist Queue Notification (FR-01 Enhancement)
+            notified_hold_info = None
+            top_hold = db.scalar(
+                select(BookHold)
+                .where(BookHold.book_id == loan.book_id, BookHold.status == "Pending")
+                .order_by(BookHold.priority.asc(), BookHold.request_date.asc(), BookHold.id.asc())
+            )
+            if top_hold:
+                top_hold.status = "Ready"
+                top_hold.notified_at = datetime.utcnow()
+                top_hold.expiry_date = today + timedelta(days=3)
+                notified_hold_info = (top_hold.id, top_hold.member_id, book.title if book else loan.book_id)
+
             db.flush()
             loan_dict = loan.to_dict()
+
+    if notified_hold_info:
+        hid, mid, btitle = notified_hold_info
+        log_quality_event(
+            "HOLD_QUEUE",
+            "HOLD_READY_NOTIFICATION",
+            "SUCCESS",
+            details=f"Book '{btitle}' is now READY for Member #{mid} (Hold #{hid})",
+        )
 
     msg = f"'{loan_dict['book_title']}' returned by '{loan_dict['member_name']}'."
     if fine > 0:
@@ -1241,3 +1263,128 @@ def get_21cfr_audit_trail(limit: int = 100) -> List[Dict[str, Any]]:
             results.append(item)
 
         return results
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SECTION 8 — AUTOMATED HOLD / WAITLIST QUEUE SERVICE (FR-01 KIOSK ENHANCEMENT)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def place_book_hold(
+    book_id: int,
+    member_id: int,
+    notes: str = "",
+) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+    """
+    Enables a student/patron to reserve a book that is currently out of stock.
+    Queues reservations with automated priority ranking.
+    """
+    try:
+        book_id = int(book_id)
+        member_id = int(member_id)
+    except (ValueError, TypeError):
+        return False, None, "Invalid Book ID or Member ID format."
+
+    with timed_operation("HOLD_QUEUE", "PLACE_HOLD", details=f"Book #{book_id} Member #{member_id}"):
+        with get_db() as db:
+            book = db.get(Book, book_id)
+            if not book:
+                return False, None, f"Book ID {book_id} not found."
+
+            member = db.get(Member, member_id)
+            if not member:
+                return False, None, f"Member ID {member_id} not found."
+
+            # Check if member already has an active hold
+            existing = db.scalar(
+                select(BookHold).where(
+                    BookHold.book_id == book_id,
+                    BookHold.member_id == member_id,
+                    BookHold.status.in_(["Pending", "Ready"]),
+                )
+            )
+            if existing:
+                return False, None, (
+                    f"'{member.name}' already has an active {existing.status.lower()} "
+                    f"hold for '{book.title}'."
+                )
+
+            # Determine queue priority position
+            queue_count = db.scalar(
+                select(func.count(BookHold.id)).where(
+                    BookHold.book_id == book_id,
+                    BookHold.status == "Pending",
+                )
+            ) or 0
+
+            # If book happens to have a copy right now, it is instantly Ready
+            initial_status = "Ready" if book.available_copies > 0 else "Pending"
+            today = date.today()
+
+            hold = BookHold(
+                book_id=book_id,
+                member_id=member_id,
+                request_date=today,
+                status=initial_status,
+                priority=queue_count + 1,
+                notes=notes.strip() if notes else "",
+                created_at=datetime.utcnow(),
+            )
+            if initial_status == "Ready":
+                hold.notified_at = datetime.utcnow()
+                hold.expiry_date = today + timedelta(days=3)
+
+            db.add(hold)
+            db.flush()
+            hold_dict = hold.to_dict()
+
+    queue_msg = f"Queue Position: #{queue_count + 1}" if initial_status == "Pending" else "Copy available! Ready for pickup within 3 days."
+    msg = f"Hold confirmed for '{book.title}' by '{member.name}'. {queue_msg}"
+    log_quality_event(
+        "HOLD_QUEUE", "PLACE_HOLD", "SUCCESS",
+        details=f"Hold #{hold_dict['id']} on '{book.title}' for '{member.name}' ({initial_status})"
+    )
+    return True, hold_dict, msg
+
+
+def get_book_holds(
+    book_id: Optional[int] = None,
+    member_id: Optional[int] = None,
+    status: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves reservation waitlist entries filtered by book, member, and status.
+    """
+    with get_db() as db:
+        query = select(BookHold).order_by(BookHold.priority.asc(), BookHold.request_date.asc())
+        if book_id is not None:
+            query = query.where(BookHold.book_id == int(book_id))
+        if member_id is not None:
+            query = query.where(BookHold.member_id == int(member_id))
+        if status and status != "All":
+            query = query.where(BookHold.status == status)
+
+        holds = db.scalars(query).all()
+        return [h.to_dict() for h in holds]
+
+
+def cancel_book_hold(hold_id: int) -> Tuple[bool, str]:
+    """Cancels an existing reservation hold."""
+    try:
+        hold_id = int(hold_id)
+    except (ValueError, TypeError):
+        return False, "Invalid Hold ID format."
+
+    with get_db() as db:
+        hold = db.get(BookHold, hold_id)
+        if not hold:
+            return False, f"Hold ID {hold_id} not found."
+        if hold.status in ("Fulfilled", "Cancelled"):
+            return False, f"Hold #{hold_id} is already {hold.status.lower()}."
+
+        hold.status = "Cancelled"
+        log_quality_event(
+            "HOLD_QUEUE", "CANCEL_HOLD", "SUCCESS",
+            details=f"Hold #{hold_id} cancelled."
+        )
+        return True, f"Hold #{hold_id} has been cancelled successfully."

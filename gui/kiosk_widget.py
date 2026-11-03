@@ -117,9 +117,9 @@ class StudentKioskWidget(QWidget):
 
         # Results Table
         self.table = QTableWidget()
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels([
-            "ISBN", "Textbook Title", "Author", "Category", "Year", "Shelf Location", "Available", "Status"
+            "ISBN", "Textbook Title", "Author", "Category", "Year", "Shelf Location", "Available", "Status", "Hold Queue"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -173,6 +173,37 @@ class StudentKioskWidget(QWidget):
             status_item = QTableWidgetItem("In Stock" if avail > 0 else "Checked Out")
             status_item.setForeground(Qt.darkGreen if avail > 0 else Qt.darkRed)
             self.table.setItem(row, 7, status_item)
+
+            if avail == 0:
+                hold_btn = QPushButton("📌 Place Hold")
+                hold_btn.setStyleSheet("background-color:#EF4444;color:white;font-weight:700;padding:4px 8px;border-radius:4px;border:none;")
+                bid = b.get("id")
+                btitle = b.get("title", "Book")
+                hold_btn.clicked.connect(lambda checked=False, bid=bid, title=btitle: self._place_hold(bid, title))
+                self.table.setCellWidget(row, 8, hold_btn)
+            else:
+                avail_lbl = QLabel("Ready on Shelf")
+                avail_lbl.setStyleSheet("color:#059669;font-weight:600;padding-left:8px;")
+                self.table.setCellWidget(row, 8, avail_lbl)
+
+
+# ==============================================================================
+# 2. FACULTY RESEARCH & CITATION PORTAL WIDGET (FR-02)
+# ==============================================================================
+
+    def _place_hold(self, book_id: int, title: str):
+        """Places an automated waitlist hold for the student."""
+        from services.library_service import place_book_hold
+        member_id = self.current_user.get("member_id", 1)
+        ok, hold, msg = place_book_hold(book_id, member_id, notes="Student Kiosk Reservation")
+        if ok:
+            QMessageBox.information(
+                self, "Hold Confirmed (FR-01)",
+                f"{msg}\n\nTQM Quality Gate: Automatic notification will fire upon book return."
+            )
+            self.refresh_search()
+        else:
+            QMessageBox.warning(self, "Hold Request", msg)
 
 
 # ==============================================================================
