@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -168,7 +168,7 @@
                 <select id="user-role-select" onchange="toggleUserRole(this.value)" class="font-bold bg-transparent border-none focus:outline-none text-slate-800 cursor-pointer">
                     <option value="admin" selected>👑 Library Admin (FR-05 Z-Report & Audit)</option>
                     <option value="circulation">🔄 Circulation Staff (FR-03 POS Bay)</option>
-                    <option value="catalog">📦 Catalog Manager (FR-04 FEFO Ledger)</option>
+                    <option value="catalog">📦 Catalog Manager (Catalog, Circulation Issue/Return & Stock)</option>
                     <option value="student">🎓 Student (Kiosk) (FR-01 Fast Search)</option>
                     <option value="faculty">🔬 Faculty Member (FR-02 Research Portal)</option>
                 </select>
@@ -781,28 +781,70 @@
         // ── Role Access Control ─────────────────────────────────────────────
         let currentRole = 'admin';
 
-        function toggleUserRole(role) {
-            currentRole = role;
-            const adminTabs = document.querySelectorAll('.admin-only-tab');
-            if (role === 'staff') {
-                adminTabs.forEach(el => el.classList.add('hidden'));
-                const activeTab = document.querySelector('.tab-btn.active')?.id?.replace('tab-', '');
-                if (['quality', 'staff', 'payroll'].includes(activeTab)) {
-                    switchTab('dashboard');
-                }
-                showToast("Switched to Staff User view: Admin features removed.", true);
-            } else {
-                adminTabs.forEach(el => el.classList.remove('hidden'));
-                showToast("Switched to Admin Panel: Full access to Quality Audit, Shifts & Payroll.", true);
+        const ROLE_PERMISSIONS = {
+            admin: {
+                allowed: ['dashboard', 'members', 'circulation', 'quality', 'staff', 'payroll', 'zreport'],
+                defaultTab: 'dashboard',
+                msg: "Switched to Library Admin Panel: Audits, Shifts, Payroll & Operations (Book Catalog is managed by Catalog Manager)."
+            },
+            catalog: {
+                allowed: ['catalog', 'circulation', 'grn'],
+                defaultTab: 'catalog',
+                msg: "Switched to Catalog Manager: Book Catalog, Circulation Desk (Issue & Return), and Stock Ledger."
+            },
+            circulation: {
+                allowed: ['circulation', 'pos', 'members', 'dashboard'],
+                defaultTab: 'circulation',
+                msg: "Switched to Circulation Staff: Issue & Return Desk, POS Bay, and Member Directory."
+            },
+            student: {
+                allowed: ['kiosk'],
+                defaultTab: 'kiosk',
+                msg: "Switched to Student (Kiosk): Fast Search, Textbook Lookup & Hold Queue."
+            },
+            faculty: {
+                allowed: ['faculty'],
+                defaultTab: 'faculty',
+                msg: "Switched to Faculty Member: Research Filter & Citation Sort."
             }
+        };
+
+        function toggleUserRole(role) {
+            currentRole = role || 'admin';
+            const config = ROLE_PERMISSIONS[currentRole] || ROLE_PERMISSIONS.admin;
+
+            // Show only permitted tabs, hide others
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                const tabId = btn.id.replace('tab-', '');
+                if (config.allowed.includes(tabId)) {
+                    btn.classList.remove('hidden');
+                } else {
+                    btn.classList.add('hidden');
+                }
+            });
+
+            // If current active tab is not in allowed tabs, switch to defaultTab
+            const activeTab = document.querySelector('.tab-btn.active')?.id?.replace('tab-', '');
+            if (!config.allowed.includes(activeTab)) {
+                switchTab(config.defaultTab);
+            }
+            showToast(config.msg, true);
         }
 
         // ── Tab Switching ──────────────────────────────────────────────────
         function switchTab(tabId) {
-            if (currentRole === 'staff' && ['quality', 'staff', 'payroll'].includes(tabId)) {
-                showToast("Access Denied: This feature is restricted to the Administrator panel.", false);
+            const config = ROLE_PERMISSIONS[currentRole] || ROLE_PERMISSIONS.admin;
+            if (!config.allowed.includes(tabId)) {
+                if (currentRole === 'admin' && tabId === 'catalog') {
+                    showToast("Access Denied: Book Catalog is managed by the Catalog Manager, not in Admin panel.", false);
+                } else if (currentRole === 'catalog') {
+                    showToast("Access Denied: Catalog Manager access is limited to Book Catalog, Circulation Desk, and Stock Ledger.", false);
+                } else {
+                    showToast("Access Denied: Feature is restricted for the selected stakeholder role.", false);
+                }
                 return;
             }
+
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
 
@@ -1606,6 +1648,7 @@
         }
         // ── Initial Page Load ──────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {
+            toggleUserRole('admin');
             loadDashboard();
             loadCategories();
             loadDepartments();
