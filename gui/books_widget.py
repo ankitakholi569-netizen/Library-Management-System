@@ -17,17 +17,20 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
     QComboBox, QDialog, QFormLayout, QSpinBox, QCheckBox,
     QMessageBox, QFrame, QDialogButtonBox, QTextEdit, QAbstractItemView,
+    QTabWidget,
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFont
 
 from services.library_service import (
     get_all_books, get_book_categories, add_book, update_book,
-    delete_book, get_book_by_id,
+    delete_book, get_book_by_id, issue_book, return_book,
+    mark_fine_paid, refresh_overdue_statuses,
 )
-from services.search_service import search_books
+from services.search_service import search_books, search_loans
 from services.report_service import generate_catalog_excel
 from services.logger_service import get_logger
+from gui.issue_widget import IssueBookDialog
 
 logger = get_logger("gui.books_widget")
 
@@ -250,14 +253,18 @@ class BooksWidget(QWidget):
 
     COLS = ["ID", "Title", "Author(s)", "Category", "ISBN", "Year",
             "Avail / Total", "Shelf Location", "Quality Status"]
+    LOAN_COLS = ["Loan #", "Book Title", "Borrower", "USN", "Issued Date", "Due Date", "Status", "Fine (INR)"]
 
     def __init__(self, current_user: dict = None, parent=None):
         super().__init__(parent)
-        self.current_user = current_user or {"username": "admin", "role": "Chief Librarian"}
+        self.current_user = current_user or {"username": "rahul_catalog", "role": "Catalog Manager"}
         self._books_cache: list = []
         self._search_timer = QTimer(self)
         self._search_timer.setSingleShot(True)
         self._search_timer.timeout.connect(self._do_search)
+        self._loan_search_timer = QTimer(self)
+        self._loan_search_timer.setSingleShot(True)
+        self._loan_search_timer.timeout.connect(self._refresh_loans)
         self._setup_ui()
         self.refresh_data()
 
@@ -269,23 +276,40 @@ class BooksWidget(QWidget):
         # ── Header ────────────────────────────────────────────────────────────
         hdr = QHBoxLayout()
         tb = QVBoxLayout(); tb.setSpacing(2)
-        t = QLabel("Book Catalog Management")
+        t = QLabel("Catalog & Circulation Hub")
         t.setStyleSheet("font-size:22px;font-weight:800;color:#0F172A;")
-        s = QLabel("Add, edit, search and inspect all library books | TQM Quality Goal 1 — Faster Search & Retrieval")
+        s = QLabel("Unified Book Acquisition (+ Add Book), Catalog Management & Circulation Bay (Issue & Return)")
         s.setStyleSheet("font-size:13px;color:#64748B;")
         tb.addWidget(t); tb.addWidget(s)
         hdr.addLayout(tb); hdr.addStretch()
 
-        self.add_btn    = QPushButton("+ Add Book");     self.add_btn.setStyleSheet(_BTN_SUCCESS)
-        self.export_btn = QPushButton("Export Excel");   self.export_btn.setStyleSheet(_BTN_DARK)
-        self.refresh_btn= QPushButton("Refresh");        self.refresh_btn.setStyleSheet("padding:8px 14px;border-radius:6px;")
-        hdr.addWidget(self.add_btn); hdr.addWidget(self.export_btn); hdr.addWidget(self.refresh_btn)
+        self.add_btn        = QPushButton("+ Add New Book");     self.add_btn.setStyleSheet(_BTN_SUCCESS)
+        self.issue_btn      = QPushButton("+ Issue Book");        self.issue_btn.setStyleSheet(_BTN_PRIMARY)
+        self.scan_overdue_btn = QPushButton("⚡ Scan Overdue");   self.scan_overdue_btn.setStyleSheet(_BTN_WARN)
+        self.export_btn     = QPushButton("Export Excel");       self.export_btn.setStyleSheet(_BTN_DARK)
+        self.refresh_btn    = QPushButton("Refresh");            self.refresh_btn.setStyleSheet("padding:8px 14px;border-radius:6px;")
+
+        hdr.addWidget(self.add_btn)
+        hdr.addWidget(self.issue_btn)
+        hdr.addWidget(self.scan_overdue_btn)
+        hdr.addWidget(self.export_btn)
+        hdr.addWidget(self.refresh_btn)
         root.addLayout(hdr)
 
-        # ── Search + Filter bar ───────────────────────────────────────────────
+        # ── Unified Tabs ───────────────────────────────────────────────────────
+        self.hub_tabs = QTabWidget()
+        self.hub_tabs.setStyleSheet("QTabBar::tab { padding: 9px 22px; font-weight: 700; font-size: 13px; }")
+
+        # 1. CATALOG TAB
+        catalog_tab = QWidget()
+        c_layout = QVBoxLayout(catalog_tab)
+        c_layout.setContentsMargins(0, 10, 0, 0)
+        c_layout.setSpacing(10)
+
+        # Search + Filter bar
         fbar = QHBoxLayout(); fbar.setSpacing(10)
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("Search by Title, Author, ISBN or Category...")
+        self.search_box.setPlaceholderText("Search catalog by Title, Author, ISBN or Category...")
         self.search_box.setStyleSheet("padding:8px 12px;border-radius:6px;border:1.5px solid #E2E8F0;font-size:13px;")
         self.search_box.textChanged.connect(self._schedule_search)
         fbar.addWidget(self.search_box, 4)
@@ -300,13 +324,12 @@ class BooksWidget(QWidget):
         self.avail_combo.currentIndexChanged.connect(self._do_search)
         fbar.addWidget(self.avail_combo, 2)
 
-        # Search KPI label
         self.kpi_lbl = QLabel("Search: —")
         self.kpi_lbl.setStyleSheet("color:#64748B;font-size:12px;padding-left:8px;")
         fbar.addWidget(self.kpi_lbl)
-        root.addLayout(fbar)
+        c_layout.addLayout(fbar)
 
-        # ── Table ─────────────────────────────────────────────────────────────
+        # Catalog Books Table
         self.table = QTableWidget()
         self.table.setColumnCount(len(self.COLS))
         self.table.setHorizontalHeaderLabels(self.COLS)
@@ -319,23 +342,91 @@ class BooksWidget(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
         self.table.doubleClicked.connect(self._edit_selected)
-        root.addWidget(self.table)
+        c_layout.addWidget(self.table)
 
-        # ── Bottom action bar ─────────────────────────────────────────────────
+        # Catalog Bottom Action Bar
         bbar = QHBoxLayout(); bbar.setSpacing(10)
         self.count_lbl   = QLabel("0 books")
         self.count_lbl.setStyleSheet("color:#64748B;font-size:12px;")
         bbar.addWidget(self.count_lbl)
         bbar.addStretch()
 
+        self.issue_selected_btn = QPushButton("⚡ Issue Selected Book")
+        self.issue_selected_btn.setStyleSheet("background-color:#059669;color:#fff;font-weight:700;padding:8px 16px;border-radius:6px;border:none;")
         self.edit_btn   = QPushButton("Edit Selected");   self.edit_btn.setStyleSheet(_BTN_PRIMARY)
         self.delete_btn = QPushButton("Delete Selected"); self.delete_btn.setStyleSheet(_BTN_DANGER)
         self.defect_btn = QPushButton("Toggle Defect");   self.defect_btn.setStyleSheet(_BTN_WARN)
-        bbar.addWidget(self.edit_btn); bbar.addWidget(self.delete_btn); bbar.addWidget(self.defect_btn)
-        root.addLayout(bbar)
+        bbar.addWidget(self.issue_selected_btn)
+        bbar.addWidget(self.edit_btn)
+        bbar.addWidget(self.delete_btn)
+        bbar.addWidget(self.defect_btn)
+        c_layout.addLayout(bbar)
+
+        self.hub_tabs.addTab(catalog_tab, "📚 Book Catalog & Acquisition")
+
+        # 2. CIRCULATION TAB
+        loans_tab = QWidget()
+        l_layout = QVBoxLayout(loans_tab)
+        l_layout.setContentsMargins(0, 10, 0, 0)
+        l_layout.setSpacing(10)
+
+        # Circulation Search Bar
+        lfbar = QHBoxLayout(); lfbar.setSpacing(10)
+        self.loan_search_box = QLineEdit()
+        self.loan_search_box.setPlaceholderText("Search active loans by book title, member name or USN...")
+        self.loan_search_box.setStyleSheet("padding:8px 12px;border-radius:6px;border:1.5px solid #E2E8F0;font-size:13px;")
+        self.loan_search_box.textChanged.connect(lambda: self._loan_search_timer.start(250))
+        lfbar.addWidget(self.loan_search_box, 4)
+
+        self.loan_status_combo = QComboBox()
+        self.loan_status_combo.addItems(["All Loans", "Borrowed", "Overdue", "Returned"])
+        self.loan_status_combo.currentIndexChanged.connect(self._refresh_loans)
+        lfbar.addWidget(self.loan_status_combo, 2)
+        l_layout.addLayout(lfbar)
+
+        # Loans Table
+        self.loans_table = QTableWidget()
+        self.loans_table.setColumnCount(len(self.LOAN_COLS))
+        self.loans_table.setHorizontalHeaderLabels(self.LOAN_COLS)
+        self.loans_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.loans_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.loans_table.verticalHeader().setVisible(False)
+        self.loans_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.loans_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.loans_table.setAlternatingRowColors(True)
+        self.loans_table.doubleClicked.connect(self._return_selected_loan)
+        l_layout.addWidget(self.loans_table)
+
+        # Loans Bottom Bar
+        lbbar = QHBoxLayout(); lbbar.setSpacing(10)
+        self.loans_count_lbl = QLabel("0 active circulation records")
+        self.loans_count_lbl.setStyleSheet("color:#64748B;font-size:12px;")
+        lbbar.addWidget(self.loans_count_lbl)
+        lbbar.addStretch()
+
+        self.return_btn = QPushButton("Return Selected Book")
+        self.return_btn.setStyleSheet(_BTN_SUCCESS)
+        self.pay_fine_btn = QPushButton("Pay Outstanding Fine")
+        self.pay_fine_btn.setStyleSheet(_BTN_WARN)
+        self.circulation_issue_btn = QPushButton("+ Issue Book")
+        self.circulation_issue_btn.setStyleSheet(_BTN_PRIMARY)
+
+        lbbar.addWidget(self.return_btn)
+        lbbar.addWidget(self.pay_fine_btn)
+        lbbar.addWidget(self.circulation_issue_btn)
+        l_layout.addLayout(lbbar)
+
+        self.hub_tabs.addTab(loans_tab, "🔄 Active Loans & Circulation Desk")
+        root.addWidget(self.hub_tabs)
 
         # Connections
         self.add_btn.clicked.connect(self._add_book)
+        self.issue_btn.clicked.connect(lambda: self._issue_book_workflow())
+        self.circulation_issue_btn.clicked.connect(lambda: self._issue_book_workflow())
+        self.issue_selected_btn.clicked.connect(self._issue_selected_book)
+        self.return_btn.clicked.connect(self._return_selected_loan)
+        self.pay_fine_btn.clicked.connect(self._pay_selected_fine)
+        self.scan_overdue_btn.clicked.connect(self._scan_overdue)
         self.edit_btn.clicked.connect(self._edit_selected)
         self.delete_btn.clicked.connect(self._delete_selected)
         self.defect_btn.clicked.connect(self._toggle_defect)
@@ -345,7 +436,7 @@ class BooksWidget(QWidget):
     # ── Data operations ───────────────────────────────────────────────────────
 
     def refresh_data(self):
-        """Reload categories and full book list."""
+        """Reload categories, books catalog, and active circulation loans."""
         cats = get_book_categories()
         cur = self.cat_combo.currentData()
         self.cat_combo.blockSignals(True)
@@ -357,6 +448,7 @@ class BooksWidget(QWidget):
         self.cat_combo.setCurrentIndex(max(0, idx))
         self.cat_combo.blockSignals(False)
         self._do_search()
+        self._refresh_loans()
 
     def _schedule_search(self):
         self._search_timer.start(250)   # debounce 250 ms
@@ -526,3 +618,138 @@ class BooksWidget(QWidget):
                                     f"Catalog exported to Excel successfully:\n\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Export Failed", str(e))
+
+    # ── Unified Circulation Operations ────────────────────────────────────────
+
+    def _refresh_loans(self):
+        """Loads and updates active/filtered loans in the circulation desk table."""
+        if not hasattr(self, "loans_table"):
+            return
+        query = getattr(self, "loan_search_box", None)
+        q_text = query.text().strip() if query else ""
+        st_combo = getattr(self, "loan_status_combo", None)
+        status = st_combo.currentText() if st_combo else "Borrowed"
+        if status == "All Loans":
+            status = ""
+
+        loans_res = search_loans(query=q_text, status=status, page=1, page_size=200)
+        loans = loans_res.get("results", [])
+        self.loans_table.setSortingEnabled(False)
+        self.loans_table.setRowCount(len(loans))
+        for row, l in enumerate(loans):
+            self.loans_table.setItem(row, 0, QTableWidgetItem(f"#{l['id']}"))
+            self.loans_table.setItem(row, 1, QTableWidgetItem(str(l.get("book_title", ""))))
+            self.loans_table.setItem(row, 2, QTableWidgetItem(str(l.get("member_name", ""))))
+            self.loans_table.setItem(row, 3, QTableWidgetItem(str(l.get("member_usn", ""))))
+            self.loans_table.setItem(row, 4, QTableWidgetItem(str(l.get("borrow_date", ""))))
+            self.loans_table.setItem(row, 5, QTableWidgetItem(str(l.get("due_date", ""))))
+
+            st_item = QTableWidgetItem(str(l.get("status", "")))
+            if l.get("status") == "Overdue":
+                st_item.setForeground(QColor("#EF4444"))
+            elif l.get("status") == "Returned":
+                st_item.setForeground(QColor("#10B981"))
+            else:
+                st_item.setForeground(QColor("#2563EB"))
+            self.loans_table.setItem(row, 6, st_item)
+
+            fine_val = float(l.get("fine_amount", 0.0))
+            fine_item = QTableWidgetItem(f"INR {fine_val:.2f}")
+            if fine_val > 0:
+                fine_item.setForeground(QColor("#EF4444"))
+            self.loans_table.setItem(row, 7, fine_item)
+
+        if hasattr(self, "loans_count_lbl"):
+            self.loans_count_lbl.setText(f"{len(loans)} circulation loan records")
+
+    def _issue_book_workflow(self, preselected_book_id: int = None):
+        """Unified Book Issuance dialog accessible directly from Catalog Hub."""
+        dlg = IssueBookDialog(
+            processed_by=self.current_user.get("username", "admin"),
+            parent=self,
+        )
+        if preselected_book_id is not None:
+            dlg.selected_book_id = preselected_book_id
+            book_d = get_book_by_id(preselected_book_id)
+            if book_d:
+                dlg.book_info_lbl.setText(f"Selected: {book_d['title']} by {book_d['author']} ({book_d['available_copies']} copies available)")
+                dlg.book_info_lbl.setStyleSheet("color:#2563EB;font-weight:600;font-size:12px;")
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        ok, loan_d, msg = issue_book(
+            book_id=dlg.selected_book_id,
+            member_id=dlg.selected_member_id,
+            processed_by=self.current_user.get("username", "admin"),
+        )
+        if ok:
+            QMessageBox.information(self, "Book Issued", msg)
+            self.refresh_data()
+            if hasattr(self, "hub_tabs"):
+                self.hub_tabs.setCurrentIndex(1)  # switch to Loans tab to see the new active loan
+        else:
+            QMessageBox.critical(self, "Issue Failed", msg)
+
+    def _issue_selected_book(self):
+        """Issues the currently highlighted book in the catalog table."""
+        book_id = self._selected_book_id()
+        if book_id is None:
+            QMessageBox.warning(self, "Selection Required", "Please select a book row in the catalog table first.")
+            return
+        self._issue_book_workflow(preselected_book_id=book_id)
+
+    def _return_selected_loan(self):
+        """Processes return for the selected active/overdue loan."""
+        row = self.loans_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Selection Required", "Please select a loan to process return.")
+            return
+        try:
+            loan_id = int(self.loans_table.item(row, 0).text().replace("#", ""))
+        except Exception:
+            QMessageBox.warning(self, "Error", "Could not read loan ID from selection.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Confirm Return",
+            f"Process return for Loan #{loan_id}?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        ok, _, msg = return_book(
+            loan_id=loan_id,
+            processed_by=self.current_user.get("username", "admin"),
+            fine_paid=True,
+        )
+        if ok:
+            QMessageBox.information(self, "Return Processed", msg)
+            self.refresh_data()
+        else:
+            QMessageBox.critical(self, "Return Failed", msg)
+
+    def _pay_selected_fine(self):
+        """Marks fine collected for the selected loan."""
+        row = self.loans_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Selection Required", "Please select a loan with outstanding fine.")
+            return
+        try:
+            loan_id = int(self.loans_table.item(row, 0).text().replace("#", ""))
+        except Exception:
+            return
+
+        ok, msg = mark_fine_paid(loan_id=loan_id, processed_by=self.current_user.get("username", "admin"))
+        if ok:
+            QMessageBox.information(self, "Fine Collected", msg)
+            self.refresh_data()
+        else:
+            QMessageBox.warning(self, "Fine Payment", msg)
+
+    def _scan_overdue(self):
+        """Scans all active loans and updates overdue SLA statuses."""
+        count = refresh_overdue_statuses(processed_by=self.current_user.get("username", "admin"))
+        QMessageBox.information(self, "Overdue SLA Scan", f"Overdue SLA refresh completed.\n{count} loan(s) updated.")
+        self.refresh_data()

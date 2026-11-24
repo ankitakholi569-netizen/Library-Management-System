@@ -17,7 +17,7 @@ from services.library_service import issue_book, return_book, add_book, add_memb
 app = QApplication.instance() or QApplication([])
 
 def test_catalog_manager_navigation():
-    """Catalog Manager must have Book Catalog, Circulation Desk, Stock Ledger, and NO OTHER VIEWS."""
+    """Catalog Manager must have a unified Catalog & Circulation Hub and Stock Ledger."""
     catalog_user = {
         "username": "rahul_catalog",
         "full_name": "Rahul Verma",
@@ -28,18 +28,27 @@ def test_catalog_manager_navigation():
     
     # Extract nav button texts and indices
     navs = [(btn.text(), idx) for btn, idx in win.nav_buttons]
-    assert len(navs) == 3, f"Catalog Manager must have exactly 3 nav views, got: {navs}"
+    assert len(navs) == 2, f"Catalog Manager has unified hub and stock ledger, got: {navs}"
     
-    expected_indices = [1, 3, 9]  # Book Catalog, Circulation Desk, Stock Ledger & GRN
+    expected_indices = [1, 9]  # Unified Catalog & Circulation Hub, Stock Ledger & GRN
     actual_indices = [idx for _, idx in navs]
     assert actual_indices == expected_indices
     
-    assert "Book Catalog" in navs[0][0]
-    assert "Circulation Desk" in navs[1][0]
-    assert "Stock Ledger" in navs[2][0]
+    assert "Catalog & Circulation Hub" in navs[0][0]
+    assert "Stock Ledger" in navs[1][0]
     
-    # Default view must be Book Catalog (1)
+    # Default view must be the unified hub (1)
     assert win.stack.currentIndex() == 1
+
+    # Verify that the unified hub (BooksWidget) combines both Add/Manage Book and Circulation
+    hub = win.books_widget
+    assert hasattr(hub, "add_btn"), "Hub must have Add Book button"
+    assert hasattr(hub, "issue_btn"), "Hub must have Issue Book button"
+    assert hasattr(hub, "return_btn"), "Hub must have Return Book button"
+    assert hasattr(hub, "table"), "Hub must display Books Catalog table"
+    assert hasattr(hub, "loans_table"), "Hub must display Circulation Loans table"
+    assert hasattr(hub, "hub_tabs"), "Hub must have unified tab navigation"
+    assert hub.hub_tabs.count() == 2
 
 
 def test_admin_navigation_no_catalog_or_circulation():

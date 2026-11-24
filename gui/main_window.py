@@ -247,8 +247,7 @@ class MainWindow(QMainWindow):
             default_view = 3
         elif persona == "Catalog Manager":
             nav_items = [
-                ("📚 Book Catalog", 1),
-                ("🔄 Circulation Desk", 3),
+                ("📚 Catalog & Circulation Hub", 1),
                 ("📦 Stock Ledger & GRN", 9),
             ]
             default_view = 1

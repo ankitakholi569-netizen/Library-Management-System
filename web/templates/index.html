@@ -127,7 +127,7 @@
                     <span>📊</span> <span>Dashboard</span>
                 </button>
                 <button onclick="switchTab('catalog')" id="tab-catalog" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5">
-                    <span>📚</span> <span>Book Catalog</span>
+                    <span>📚</span> <span>Catalog &amp; Circulation Hub</span>
                 </button>
                 <button onclick="switchTab('members')" id="tab-members" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-700 transition-all flex items-center space-x-1.5">
                     <span>👥</span> <span>Members Directory</span>
@@ -248,15 +248,23 @@
         <!-- ================================================================== -->
         <!-- TAB 2: BOOK CATALOG & CRUD -->
         <!-- ================================================================== -->
+        <!-- TAB 2: UNIFIED CATALOG & CIRCULATION HUB -->
+        <!-- ================================================================== -->
         <section id="section-catalog" class="hidden space-y-5">
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                    <h2 class="text-2xl font-extrabold text-slate-900">Textbook Inventory & Catalog</h2>
-                    <p class="text-sm text-slate-500">Search, filter, update stock copies, inspect physical defects & export catalog</p>
+                    <h2 class="text-2xl font-extrabold text-slate-900">Catalog &amp; Circulation Hub</h2>
+                    <p class="text-sm text-slate-500">Unified Book Acquisition (+ Add Book), Catalog Inventory &amp; Circulation Bay (Issue &amp; Return)</p>
                 </div>
-                <div class="flex items-center space-x-2">
-                    <button onclick="openBookModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all">
-                        + Add New Book
+                <div class="flex items-center flex-wrap gap-2">
+                    <button onclick="openBookModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center space-x-1.5">
+                        <span>+ Add New Book</span>
+                    </button>
+                    <button onclick="openIssueModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all flex items-center space-x-1.5">
+                        <span>+ Issue Book</span>
+                    </button>
+                    <button onclick="refreshOverdueScan()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all">
+                        ⚡ Scan Overdue SLA
                     </button>
                     <a href="/export/catalog" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs sm:text-sm font-bold transition-all">
                         Export Excel
@@ -264,50 +272,110 @@
                 </div>
             </div>
 
-            <!-- Filters Bar -->
-            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
-                <div class="flex flex-1 w-full gap-2.5">
-                    <input type="text" id="catalog-search" oninput="debounce(loadBooks, 250)()" placeholder="Filter by Title, Author, or ISBN..."
-                           class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <select id="catalog-category-filter" onchange="loadBooks()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                        <option value="">All Categories</option>
-                    </select>
-                    <select id="catalog-avail-filter" onchange="loadBooks()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                        <option value="">All Availability</option>
-                        <option value="Available">Available</option>
-                        <option value="Unavailable">Unavailable</option>
-                    </select>
+            <!-- View Switcher Pills within the Hub -->
+            <div class="flex items-center gap-2 bg-slate-200/70 p-1.5 rounded-2xl max-w-fit shadow-inner">
+                <button id="hub-btn-catalog" onclick="switchHubSubView('catalog')" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-blue-600 shadow-sm transition-all flex items-center space-x-1.5">
+                    <span>📚</span> <span>Book Catalog &amp; Acquisition</span>
+                </button>
+                <button id="hub-btn-circulation" onclick="switchHubSubView('circulation')" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-1.5">
+                    <span>🔄</span> <span>Active Loans &amp; Returns</span>
+                </button>
+            </div>
+
+            <!-- SUB-PANEL 1: BOOK CATALOG & INVENTORY -->
+            <div id="hub-panel-catalog" class="space-y-4">
+                <!-- Filters Bar -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
+                    <div class="flex flex-1 w-full gap-2.5">
+                        <input type="text" id="catalog-search" oninput="debounce(loadBooks, 250)()" placeholder="Filter by Title, Author, or ISBN..."
+                               class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <select id="catalog-category-filter" onchange="loadBooks()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                            <option value="">All Categories</option>
+                        </select>
+                        <select id="catalog-avail-filter" onchange="loadBooks()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                            <option value="">All Availability</option>
+                            <option value="Available">Available</option>
+                            <option value="Unavailable">Unavailable</option>
+                        </select>
+                    </div>
+                    <div id="catalog-search-kpi" class="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                        Latency: -- ms
+                    </div>
                 </div>
-                <div id="catalog-search-kpi" class="text-xs font-semibold text-slate-500 whitespace-nowrap">
-                    Latency: -- ms
+
+                <!-- Books Table -->
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs sm:text-sm">
+                            <thead class="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[11px] tracking-wider">
+                                <tr>
+                                    <th class="px-4 py-3">ID</th>
+                                    <th class="px-4 py-3">Title</th>
+                                    <th class="px-4 py-3">Author</th>
+                                    <th class="px-4 py-3">Category</th>
+                                    <th class="px-4 py-3">ISBN</th>
+                                    <th class="px-4 py-3 text-center">Copies (Avail / Total)</th>
+                                    <th class="px-4 py-3">Shelf</th>
+                                    <th class="px-4 py-3">Quality Status</th>
+                                    <th class="px-4 py-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="books-table-body" class="divide-y divide-slate-100">
+                                <tr><td colspan="9" class="px-4 py-8 text-center text-slate-400">Loading catalog volumes...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span id="catalog-total-count">0 books</span>
+                        <span id="catalog-pagination-info">Page 1</span>
+                    </div>
                 </div>
             </div>
 
-            <!-- Books Table -->
-            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs sm:text-sm">
-                        <thead class="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[11px] tracking-wider">
-                            <tr>
-                                <th class="px-4 py-3">ID</th>
-                                <th class="px-4 py-3">Title</th>
-                                <th class="px-4 py-3">Author</th>
-                                <th class="px-4 py-3">Category</th>
-                                <th class="px-4 py-3">ISBN</th>
-                                <th class="px-4 py-3 text-center">Copies (Avail / Total)</th>
-                                <th class="px-4 py-3">Shelf</th>
-                                <th class="px-4 py-3">Quality Status</th>
-                                <th class="px-4 py-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="books-table-body" class="divide-y divide-slate-100">
-                            <tr><td colspan="9" class="px-4 py-8 text-center text-slate-400">Loading catalog volumes...</td></tr>
-                        </tbody>
-                    </table>
+            <!-- SUB-PANEL 2: CIRCULATION & RETURNS -->
+            <div id="hub-panel-circulation" class="hidden space-y-4">
+                <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
+                    <div class="flex flex-1 w-full gap-2.5">
+                        <input type="text" id="hub-loan-search" oninput="debounce(loadHubLoans, 250)()" placeholder="Search active loans by book title, member name or USN..."
+                               class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <select id="hub-loan-status-filter" onchange="loadHubLoans()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                            <option value="">All Loans (Active & Overdue)</option>
+                            <option value="Borrowed" selected>Active (Borrowed)</option>
+                            <option value="Overdue">Overdue Only</option>
+                            <option value="Returned">Returned History</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="openIssueModal()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm">
+                            + Issue Book
+                        </button>
+                    </div>
                 </div>
-                <div class="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                    <span id="catalog-total-count">0 books</span>
-                    <span id="catalog-pagination-info">Page 1</span>
+
+                <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs sm:text-sm">
+                            <thead class="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold uppercase text-[11px] tracking-wider">
+                                <tr>
+                                    <th class="px-4 py-3">Loan #</th>
+                                    <th class="px-4 py-3">Book Title</th>
+                                    <th class="px-4 py-3">Borrower Name</th>
+                                    <th class="px-4 py-3">USN</th>
+                                    <th class="px-4 py-3">Issued Date</th>
+                                    <th class="px-4 py-3">Due Date</th>
+                                    <th class="px-4 py-3">Status</th>
+                                    <th class="px-4 py-3 text-right">Fine (INR)</th>
+                                    <th class="px-4 py-3 text-right">Circulation Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hub-loans-table-body" class="divide-y divide-slate-100">
+                                <tr><td colspan="9" class="px-4 py-8 text-center text-slate-400">Loading circulation records...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="px-4 py-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span id="hub-loans-total-count">0 loans</span>
+                    </div>
                 </div>
             </div>
         </section>
@@ -788,9 +856,9 @@
                 msg: "Switched to Library Admin Panel: Audits, Shifts, Payroll & Reports (Circulation Desk and Book Catalog are managed exclusively by Catalog Manager)."
             },
             catalog: {
-                allowed: ['catalog', 'circulation', 'grn'],
+                allowed: ['catalog', 'grn'],
                 defaultTab: 'catalog',
-                msg: "Switched to Catalog Manager: Exclusive management of Book Catalog, Circulation Desk (Issue & Return), and Stock Ledger."
+                msg: "Switched to Catalog Manager: Unified Catalog & Circulation Hub (Add Books, Inventory, and Issue & Return)."
             },
             circulation: {
                 allowed: ['circulation', 'pos', 'members', 'dashboard'],
@@ -855,12 +923,104 @@
             if (activeSec) activeSec.classList.remove('hidden');
 
             if (tabId === 'dashboard') loadDashboard();
-            else if (tabId === 'catalog') loadBooks();
+            else if (tabId === 'catalog') { loadBooks(); loadHubLoans(); }
             else if (tabId === 'members') loadMembers();
             else if (tabId === 'circulation') loadLoans();
             else if (tabId === 'quality') loadQualityLogs();
             else if (tabId === 'staff') loadShifts();
             else if (tabId === 'payroll') loadPayrolls();
+        }
+
+        // ── Unified Catalog & Circulation Hub Sub-View Controller ───────────
+        function switchHubSubView(view) {
+            const catBtn = document.getElementById('hub-btn-catalog');
+            const circBtn = document.getElementById('hub-btn-circulation');
+            const catPanel = document.getElementById('hub-panel-catalog');
+            const circPanel = document.getElementById('hub-panel-circulation');
+
+            if (!catBtn || !circBtn || !catPanel || !circPanel) return;
+
+            if (view === 'circulation') {
+                catBtn.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-1.5";
+                circBtn.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-blue-600 shadow-sm transition-all flex items-center space-x-1.5";
+                catPanel.classList.add('hidden');
+                circPanel.classList.remove('hidden');
+                loadHubLoans();
+            } else {
+                catBtn.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white text-blue-600 shadow-sm transition-all flex items-center space-x-1.5";
+                circBtn.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-1.5";
+                catPanel.classList.remove('hidden');
+                circPanel.classList.add('hidden');
+                loadBooks();
+            }
+        }
+
+        async function openIssueForBook(bookId) {
+            await openIssueModal();
+            const bSel = document.getElementById('issue-book-select');
+            if (bSel) {
+                bSel.value = String(bookId);
+            }
+        }
+
+        async function loadHubLoans() {
+            try {
+                const search = document.getElementById('hub-loan-search')?.value || '';
+                const status = document.getElementById('hub-loan-status-filter')?.value || '';
+                const url = `/api/loans?q=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}&page_size=100`;
+                const res = await fetch(url);
+                const data = await res.json();
+                const tbody = document.getElementById('hub-loans-table-body');
+                if (!tbody) return;
+                if (!data.loans || data.loans.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center text-slate-400">No circulation records found.</td></tr>`;
+                    const countEl = document.getElementById('hub-loans-total-count');
+                    if (countEl) countEl.innerText = `0 loans`;
+                    return;
+                }
+                tbody.innerHTML = data.loans.map(l => `
+                    <tr class="table-row-hover">
+                        <td class="px-4 py-3 font-semibold text-slate-500">#${l.id}</td>
+                        <td class="px-4 py-3 font-bold text-slate-800">${l.book_title}</td>
+                        <td class="px-4 py-3 font-bold text-slate-700">${l.member_name}</td>
+                        <td class="px-4 py-3 font-mono text-xs text-slate-500">${l.member_usn}</td>
+                        <td class="px-4 py-3 text-slate-500 text-xs">${l.borrow_date}</td>
+                        <td class="px-4 py-3 text-slate-500 text-xs font-semibold ${l.status === 'Overdue' ? 'text-rose-600' : ''}">${l.due_date}</td>
+                        <td class="px-4 py-3">
+                            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${l.status === 'Overdue' ? 'bg-rose-100 text-rose-800' : l.status === 'Returned' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'}">
+                                ${l.status}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-right font-bold ${l.fine_amount > 0 ? 'text-rose-600' : 'text-slate-400'}">
+                            INR ${l.fine_amount.toFixed(2)}
+                        </td>
+                        <td class="px-4 py-3 text-right space-x-1 whitespace-nowrap">
+                            ${l.status !== 'Returned' ? `
+                                <button onclick="returnBookFromHub(${l.id})" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm">
+                                    Return Book
+                                </button>
+                            ` : `<span class="text-xs text-slate-400 italic">Completed</span>`}
+                            ${l.fine_amount > 0 && !l.fine_paid ? `
+                                <button onclick="payFineFromHub(${l.id})" class="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-semibold">
+                                    Pay Fine
+                                </button>
+                            ` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+                const countEl = document.getElementById('hub-loans-total-count');
+                if (countEl) countEl.innerText = `${data.total} loans`;
+            } catch (err) { console.error("loadHubLoans error", err); }
+        }
+
+        async function returnBookFromHub(loanId) {
+            await returnBook(loanId);
+            loadHubLoans();
+        }
+
+        async function payFineFromHub(loanId) {
+            await payFine(loanId);
+            loadHubLoans();
         }
 
         // ── 1. Dashboard KPIs ──────────────────────────────────────────────
@@ -993,6 +1153,11 @@
                             </button>
                         </td>
                         <td class="px-4 py-3 text-right space-x-1 whitespace-nowrap">
+                            ${b.available_copies > 0 ? `
+                                <button onclick="openIssueForBook(${b.id})" class="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold" title="Issue this book to a member">
+                                    ⚡ Issue
+                                </button>
+                            ` : ''}
                             <button onclick='editBook(${JSON.stringify(b)})' class="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold">Edit</button>
                             <button onclick="deleteBook(${b.id})" class="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold">Delete</button>
                         </td>
@@ -1392,6 +1557,8 @@
                     showToast(data.message);
                     closeIssueModal();
                     loadLoans();
+                    loadHubLoans();
+                    loadBooks();
                     loadDashboard();
                 } else {
                     showToast(data.error || 'Failed to issue book', false);
