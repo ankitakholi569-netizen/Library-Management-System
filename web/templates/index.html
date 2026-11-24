@@ -783,14 +783,14 @@
 
         const ROLE_PERMISSIONS = {
             admin: {
-                allowed: ['dashboard', 'members', 'circulation', 'quality', 'staff', 'payroll', 'zreport'],
+                allowed: ['dashboard', 'members', 'quality', 'staff', 'payroll', 'zreport'],
                 defaultTab: 'dashboard',
-                msg: "Switched to Library Admin Panel: Audits, Shifts, Payroll & Operations (Book Catalog is managed by Catalog Manager)."
+                msg: "Switched to Library Admin Panel: Audits, Shifts, Payroll & Reports (Circulation Desk and Book Catalog are managed exclusively by Catalog Manager)."
             },
             catalog: {
                 allowed: ['catalog', 'circulation', 'grn'],
                 defaultTab: 'catalog',
-                msg: "Switched to Catalog Manager: Book Catalog, Circulation Desk (Issue & Return), and Stock Ledger."
+                msg: "Switched to Catalog Manager: Exclusive management of Book Catalog, Circulation Desk (Issue & Return), and Stock Ledger."
             },
             circulation: {
                 allowed: ['circulation', 'pos', 'members', 'dashboard'],
@@ -835,8 +835,8 @@
         function switchTab(tabId) {
             const config = ROLE_PERMISSIONS[currentRole] || ROLE_PERMISSIONS.admin;
             if (!config.allowed.includes(tabId)) {
-                if (currentRole === 'admin' && tabId === 'catalog') {
-                    showToast("Access Denied: Book Catalog is managed by the Catalog Manager, not in Admin panel.", false);
+                if (currentRole === 'admin' && (tabId === 'catalog' || tabId === 'circulation')) {
+                    showToast("Access Denied: Circulation and Book Catalog features have been moved to the Catalog Manager role.", false);
                 } else if (currentRole === 'catalog') {
                     showToast("Access Denied: Catalog Manager access is limited to Book Catalog, Circulation Desk, and Stock Ledger.", false);
                 } else {
@@ -1381,7 +1381,11 @@
                 const res = await fetch('/api/loans/issue', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ member_id: parseInt(memberId), book_id: parseInt(bookId) })
+                    body: JSON.stringify({
+                        member_id: parseInt(memberId),
+                        book_id: parseInt(bookId),
+                        processed_by: "Catalog Manager"
+                    })
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -1401,7 +1405,7 @@
                 const res = await fetch(`/api/loans/${loanId}/return`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fine_paid: true })
+                    body: JSON.stringify({ fine_paid: true, processed_by: "Catalog Manager" })
                 });
                 const data = await res.json();
                 if (data.success) {
@@ -1416,7 +1420,11 @@
 
         async function payFine(loanId) {
             try {
-                const res = await fetch(`/api/loans/${loanId}/pay-fine`, { method: 'POST' });
+                const res = await fetch(`/api/loans/${loanId}/pay-fine`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ processed_by: "Catalog Manager" })
+                });
                 const data = await res.json();
                 if (data.success) {
                     showToast(data.message);

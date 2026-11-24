@@ -42,8 +42,8 @@ def test_catalog_manager_navigation():
     assert win.stack.currentIndex() == 1
 
 
-def test_admin_navigation_no_book_catalog():
-    """Admin panel must NOT have Book Catalog in its navigation items."""
+def test_admin_navigation_no_catalog_or_circulation():
+    """Admin panel must NOT have Book Catalog or Circulation Desk in its navigation items."""
     admin_user = {
         "username": "admin",
         "full_name": "Dr. Anita Sharma",
@@ -53,13 +53,13 @@ def test_admin_navigation_no_book_catalog():
     assert win.stakeholder_persona == "Library Admin"
     
     nav_indices = [idx for _, idx in win.nav_buttons]
-    # Book catalog (1) MUST NOT be in Admin nav
+    # Book catalog (1) and Circulation Desk (3) MUST NOT be in Admin nav
     assert 1 not in nav_indices, f"Admin panel must NOT contain Book Catalog (view 1)! Found: {nav_indices}"
+    assert 3 not in nav_indices, f"Admin panel must NOT contain Circulation Desk (view 3)! Found: {nav_indices}"
     
     # Verify Admin has other modules
     assert 0 in nav_indices  # Executive Dashboard
     assert 2 in nav_indices  # Member Directory
-    assert 3 in nav_indices  # Circulation Desk
     assert 9 in nav_indices  # Stock Ledger
     assert 10 in nav_indices # Daily Z-Report
     assert 4 in nav_indices  # Audit

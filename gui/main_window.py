@@ -137,7 +137,7 @@ class MainWindow(QMainWindow):
         self.current_user = current_user or {
             "username": "rahul_catalog",
             "full_name": "Rahul Verma",
-            "role": "Library Assistant",
+            "role": "Catalog Manager",
         }
         self.setWindowTitle(f"{APP_NAME} (v{APP_VERSION}) — {COURSE_NAME}")
         self.resize(1300, 850)
@@ -256,7 +256,6 @@ class MainWindow(QMainWindow):
             nav_items = [
                 ("📊 Executive Dashboard", 0),
                 ("👥 Member Directory", 2),
-                ("🔄 Circulation Desk", 3),
                 ("📦 Stock Ledger (FR-04)", 9),
                 ("🧾 Daily Z-Report (FR-05)", 10),
                 ("📈 21 CFR Part 11 Audit", 4),
